@@ -1,6 +1,6 @@
 # Table Tennis Physics Simulator (Work in Progress)
 
-![Table Tennis Simulation](Backhand composite service.gif)
+![Table Tennis Simulation](Backhand_composite_service.gif)
 
 Welcome to the Table Tennis Physics Simulator repository! If you've ever been curious about the intricate dance between physics and sports, you're in for a treat. This project is your gateway to exploring the fascinating world of table tennis like never before.
 
