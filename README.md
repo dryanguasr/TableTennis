@@ -6,7 +6,7 @@ Welcome to the Table Tennis Physics Simulator repository! If you've ever been cu
 
 ## What is the Table Tennis Physics Simulator?
 
-The Table Tennis Physics Simulator is an innovative and educational project that brings together the realms of science and sports. Our simulator allows you to dive deep into the dynamic physics governing table tennis ball trajectories. Experience the thrill of crafting your shots, accounting for drag, magnus force, and table friction – just like a seasoned table tennis pro!
+The Table Tennis Physics Simulator is an innovative and educational project that brings together the realms of science and sports. Our simulator allows you to dive deep into the dynamic physics governing table tennis ball trajectories. Experience the thrill of crafting your shots, accounting for drag, Magnus force, and table friction – just like a seasoned table tennis pro!
 
 ## Key Features
 
@@ -17,7 +17,7 @@ The Table Tennis Physics Simulator is an innovative and educational project that
 
 ## How to Use
 
-1. **Clone the Repository:** Start by cloning this repository to your local machine using `git clone https://github.com/your-username/table-tennis-physics.git`.
+1. **Clone the Repository:** Start by cloning this repository to your local machine using `git clone https://github.com/dyanguasr/table-tennis-physics.git`.
 
 2. **Run the Simulator:** Launch the simulator by running `TableTennisTests.mlx` and follow the on-screen instructions.
 
@@ -25,7 +25,7 @@ The Table Tennis Physics Simulator is an innovative and educational project that
 
 ## Contributions and Feedback
 
-We welcome contributions from the community! Whether you're a physics enthusiast, a sports aficionado, or just someone curious about programming simulations, your insights are invaluable. Feel free to open issues, submit pull requests, or engage in discussions.
+We welcome contributions from the community! Whether you're a physics enthusiast, a sports enthusiast, or just someone curious about programming simulations, your insights are invaluable. Feel free to open issues, submit pull requests, or engage in discussions.
 
 If you have any questions, suggestions, or ideas, don't hesitate to reach out to us. We're excited to collaborate and make this simulator even more impressive!
 
