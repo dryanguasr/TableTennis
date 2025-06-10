@@ -19,7 +19,7 @@ The Table Tennis Physics Simulator is an innovative and educational project that
 
 1. **Clone the Repository:** Start by cloning this repository to your local machine using `git clone https://github.com/dyanguasr/table-tennis-physics.git`.
 
-2. **Run the Simulator:** Launch the simulator by running `TableTennisTests.mlx` and follow the on-screen instructions.
+2. **Run the Simulator:** Launch the MATLAB version with `TableTennisTests.mlx`, run the Python script with `python table_tennis_simulation.py [--save output.mp4]`, or open `interactive_table_tennis.ipynb` to experiment with sliders.
 
 3. **Experiment and Explore:** Tweak the parameters, observe the changes in ball trajectories, and marvel at the elegance of physics at play.
 
