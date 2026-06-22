@@ -287,10 +287,8 @@ def draw_racket(ax: plt.Axes, center=(0, 0, 0), angle=(0, 0, 0)) -> None:
     ax.plot_surface(X, Y, Z, color="#8b5a2b", alpha=0.95, edgecolor="none")
 
 
-def plot_table(ax: plt.Axes, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
-    """Draw the table, ball and vectors for a single frame."""
-
-    ax.clear()
+def draw_table(ax: plt.Axes) -> None:
+    """Draw the table, markings and net without clearing the axes."""
 
     X, Y = np.meshgrid([0, TABLE_LENGTH], [0, TABLE_WIDTH])
     Z = np.ones_like(X) * TABLE_HEIGHT
@@ -319,9 +317,29 @@ def plot_table(ax: plt.Axes, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch
     net_lines_v = np.arange(-NET_EXTRA + 30, TABLE_WIDTH + NET_EXTRA - 30 + net_square_side, net_square_side)
     net_lines_h = np.arange(TABLE_HEIGHT, TABLE_HEIGHT + 130 + net_square_side, net_square_side)
     for z in net_lines_h:
-        ax.plot([TABLE_LENGTH / 2, TABLE_LENGTH / 2], [-NET_EXTRA + 30, TABLE_WIDTH + NET_EXTRA - 30], [z, z], "k", linewidth=0.5)
+        ax.plot(
+            [TABLE_LENGTH / 2, TABLE_LENGTH / 2],
+            [-NET_EXTRA + 30, TABLE_WIDTH + NET_EXTRA - 30],
+            [z, z],
+            "k",
+            linewidth=0.5,
+        )
     for y in net_lines_v:
-        ax.plot([TABLE_LENGTH / 2, TABLE_LENGTH / 2], [y, y], [TABLE_HEIGHT, TABLE_HEIGHT + 130], "k", linewidth=0.5)
+        ax.plot(
+            [TABLE_LENGTH / 2, TABLE_LENGTH / 2],
+            [y, y],
+            [TABLE_HEIGHT, TABLE_HEIGHT + 130],
+            "k",
+            linewidth=0.5,
+        )
+
+
+def plot_table(ax: plt.Axes, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
+    """Draw the table, ball and vectors for a single frame."""
+
+    ax.clear()
+
+    draw_table(ax)
 
     u, v_ang = np.mgrid[0 : 2 * np.pi : 25j, 0 : np.pi : 13j]
     ball_x = BALL_RADIUS * np.cos(u) * np.sin(v_ang) + pos[0]
