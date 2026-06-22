@@ -11,7 +11,7 @@ The Table Tennis Physics Simulator is an innovative and educational project that
 ## Key Features
 
 - **Realistic Physics:** Immerse yourself in an authentic table tennis experience with accurate simulations of ball trajectories influenced by drag, Magnus force, and table friction.
-- **Interactive Interface:** Easily customize parameters such as ball speed, spin, and angle to observe their profound effects on the ball's path.
+- **Interactive Interface:** Easily customize parameters such as ball speed, spin, racket angle, rubber friction, rubber restitution, and racket velocity to observe their effects on the ball's path.
 - **Visual Delight:** Watch the action unfold through captivating visualizations that vividly depict the intricate interplay between physics and sports.
 - **Educational Tool:** Gain a deeper understanding of physics concepts by witnessing their direct impact on a familiar and engaging scenario.
 
@@ -19,7 +19,7 @@ The Table Tennis Physics Simulator is an innovative and educational project that
 
 1. **Clone the Repository:** Start by cloning this repository to your local machine using `git clone https://github.com/dyanguasr/table-tennis-physics.git`.
 
-2. **Run the Simulator:** Launch the MATLAB version with `TableTennisTests.mlx`, run the Python script with `python table_tennis_simulation.py [--save output.mp4]`, or open `interactive_table_tennis.ipynb` to experiment with sliders.
+2. **Run the Simulator:** Launch the MATLAB version with `TableTennisTests.mlx`, run the Python script with `python table_tennis_simulation.py [--save output.mp4]`, open `interactive_table_tennis.ipynb` to experiment with sliders, or open `racket_impact_explorer.ipynb` to explore racket-impact parameters and coaching moments 1-6.
 
 3. **Experiment and Explore:** Tweak the parameters, observe the changes in ball trajectories, and marvel at the elegance of physics at play.
 
