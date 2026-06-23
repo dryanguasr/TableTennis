@@ -9,12 +9,12 @@ function.
 from __future__ import annotations
 
 import argparse
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import animation
 
 # Constants in the same units as the MATLAB code (mm, g, mN)
 BALL_MASS = 2.7  # g
@@ -264,7 +264,7 @@ def _elliptic_cylinder(center, radius_y, radius_z, thickness, rotation, resoluti
     return world[0], world[1], world[2]
 
 
-def draw_racket(ax: plt.Axes, center=(0, 0, 0), angle=(0, 0, 0)) -> None:
+def draw_racket(ax, center=(0, 0, 0), angle=(0, 0, 0)) -> None:
     """Draw a standard racket as five elliptic blade layers plus a handle."""
 
     rotation = _rotation_matrix_xyz(angle)
@@ -287,7 +287,7 @@ def draw_racket(ax: plt.Axes, center=(0, 0, 0), angle=(0, 0, 0)) -> None:
     ax.plot_surface(X, Y, Z, color="#8b5a2b", alpha=0.95, edgecolor="none")
 
 
-def draw_table(ax: plt.Axes) -> None:
+def draw_table(ax) -> None:
     """Draw the table, markings and net without clearing the axes."""
 
     X, Y = np.meshgrid([0, TABLE_LENGTH], [0, TABLE_WIDTH])
@@ -334,7 +334,7 @@ def draw_table(ax: plt.Axes) -> None:
         )
 
 
-def plot_table(ax: plt.Axes, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
+def plot_table(ax, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
     """Draw the table, ball and vectors for a single frame."""
 
     ax.clear()
@@ -362,8 +362,35 @@ def plot_table(ax: plt.Axes, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch
     ax.grid(True)
 
 
-def animate_simulation(result: SimulationResult, save: Optional[str] = None) -> None:
+def resolve_ffmpeg_path(ffmpeg_path: Optional[str] = None) -> Optional[str]:
+    """Return an executable FFmpeg path when MP4 output is available."""
+
+    if ffmpeg_path:
+        path = Path(ffmpeg_path)
+        if path.exists():
+            return str(path)
+        resolved = shutil.which(ffmpeg_path)
+        if resolved:
+            return resolved
+        return None
+
+    return shutil.which("ffmpeg")
+
+
+def animate_simulation(result: SimulationResult, save: Optional[str] = None, ffmpeg_path: Optional[str] = None) -> None:
     """Animate the trajectory using ``matplotlib.animation``."""
+
+    import matplotlib.pyplot as plt
+    from matplotlib import animation
+
+    ffmpeg = resolve_ffmpeg_path(ffmpeg_path) if save else None
+    if save and ffmpeg is None:
+        raise RuntimeError(
+            "Cannot save MP4 because FFmpeg was not found. Install FFmpeg and add it to PATH, "
+            "or pass its executable path with --ffmpeg."
+        )
+    if ffmpeg:
+        plt.rcParams["animation.ffmpeg_path"] = ffmpeg
 
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection="3d")
@@ -386,13 +413,21 @@ def animate_simulation(result: SimulationResult, save: Optional[str] = None) -> 
 
     if save:
         writer = animation.FFMpegWriter(fps=int(1 / (DT * PLOT_PERIOD)))
-        ani.save(save, writer=writer)
+        try:
+            ani.save(save, writer=writer)
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Cannot save MP4 because Matplotlib could not start FFmpeg. "
+                "Install FFmpeg and add it to PATH, or pass its executable path with --ffmpeg."
+            ) from exc
     else:
         plt.show()
 
 
 def plot_results(result: SimulationResult, dt: float = DT) -> None:
     """Plot position, velocity and rotation graphs after the simulation."""
+
+    import matplotlib.pyplot as plt
 
     t = np.arange(result.x.shape[1]) * dt
 
