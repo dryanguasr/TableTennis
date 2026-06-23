@@ -10,11 +10,20 @@ from __future__ import annotations
 import argparse
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
-from table_tennis_simulation import BALL_RADIUS, RacketImpactParameters, TABLE_HEIGHT, TABLE_WIDTH, simulate_racket_impact
+from table_tennis_simulation import (
+    BALL_RADIUS,
+    RacketImpactParameters,
+    TABLE_HEIGHT,
+    TABLE_WIDTH,
+    animate_simulation,
+    resolve_ffmpeg_path,
+    simulate_racket_impact,
+)
 
 SERVICE_TYPES = {
     "pendulum": {"racket_velocity": (2300.0, -850.0, 850.0), "angle": (8.0, -34.0, -22.0), "omega": (80.0, -210.0, 520.0)},
@@ -68,13 +77,32 @@ def count_table_bounces(result) -> int:
     return int(np.count_nonzero(np.isclose(result.x[2], table_level, atol=1e-6) & (result.v[2] > 0)))
 
 
-def run_case(case: BenchmarkCase, repeat: int, dt: float, t_max: float) -> dict[str, float | int | str]:
+def case_filename(case: BenchmarkCase) -> str:
+    return f"{case.service}_{case.depth}_{case.lane}.mp4"
+
+
+def save_case_video(case: BenchmarkCase, result, video_dir: Path, ffmpeg_path: str | None) -> Path:
+    video_dir.mkdir(parents=True, exist_ok=True)
+    path = video_dir / case_filename(case)
+    animate_simulation(result, save=str(path), ffmpeg_path=ffmpeg_path)
+    return path
+
+
+def run_case(
+    case: BenchmarkCase,
+    repeat: int,
+    dt: float,
+    t_max: float,
+    video_dir: Path,
+    ffmpeg_path: str | None,
+) -> dict[str, float | int | str]:
     start = time.perf_counter()
     result = None
     for _ in range(repeat):
         result = simulate_racket_impact(case.params, dt=dt, t_max=t_max)
     elapsed = time.perf_counter() - start
     assert result is not None
+    video_path = save_case_video(case, result, video_dir, ffmpeg_path)
     return {
         "service": case.service,
         "depth": case.depth,
@@ -85,6 +113,7 @@ def run_case(case: BenchmarkCase, repeat: int, dt: float, t_max: float) -> dict[
         "samples": result.x.shape[1],
         "bounces": count_table_bounces(result),
         "final_z_mm": float(result.x[2, -1]),
+        "video": str(video_path),
     }
 
 
@@ -93,14 +122,36 @@ def main() -> None:
     parser.add_argument("--repeat", type=int, default=20, help="Runs per serve variant.")
     parser.add_argument("--dt", type=float, default=0.005, help="Simulation step in seconds.")
     parser.add_argument("--t-max", type=float, default=3.0, help="Simulation horizon in seconds.")
+    parser.add_argument(
+        "--video-dir",
+        type=Path,
+        default=Path("benchmark_racket_services"),
+        help="Directory where one MP4 per racket-service benchmark variant is saved.",
+    )
+    parser.add_argument("--ffmpeg", help="Path to the FFmpeg executable used for MP4 output.")
     args = parser.parse_args()
 
-    print("service,depth,lane,repeat,total_ms,avg_ms,samples,bounces,final_z_mm")
+    ffmpeg_path = resolve_ffmpeg_path(args.ffmpeg)
+    if ffmpeg_path is None:
+        parser.error(
+            "MP4 output requires FFmpeg. Install FFmpeg and add it to PATH, "
+            "or pass its executable path with --ffmpeg."
+        )
+
+    print("service,depth,lane,repeat,total_ms,avg_ms,samples,bounces,final_z_mm,video")
     for case in build_cases():
-        row = run_case(case, repeat=args.repeat, dt=args.dt, t_max=args.t_max)
+        row = run_case(
+            case,
+            repeat=args.repeat,
+            dt=args.dt,
+            t_max=args.t_max,
+            video_dir=args.video_dir,
+            ffmpeg_path=ffmpeg_path,
+        )
         print(
             f"{row['service']},{row['depth']},{row['lane']},{row['repeat']},"
-            f"{row['total_ms']:.3f},{row['avg_ms']:.3f},{row['samples']},{row['bounces']},{row['final_z_mm']:.1f}"
+            f"{row['total_ms']:.3f},{row['avg_ms']:.3f},{row['samples']},{row['bounces']},"
+            f"{row['final_z_mm']:.1f},{row['video']}"
         )
 
 
