@@ -20,7 +20,7 @@ import numpy as np
 BALL_MASS = 2.7  # g
 BALL_RADIUS = 20.25  # mm
 BALL_ROT_INERTIA = 2 / 3 * BALL_MASS * BALL_RADIUS**2
-TABLE_RESTITUTION = 0.77
+TABLE_RESTITUTION = 0.89
 NET_RESTITUTION = 0.5
 DRAG = 2.7  # mN/(mm/s)
 ROT_DRAG = 350.0  # mN mm/[rad/s]

@@ -27,35 +27,40 @@ from table_tennis_simulation import (
     simulate,
 )
 
+RPS = 2 * np.pi
+
+# Direct-service angular velocities are expressed as revolutions per second
+# times RPS.  The benchmark intentionally uses 50-100 rps of combined spin so
+# Magnus lift/sideswerve are visible instead of near-dead-ball trajectories.
 SERVICE_TYPES = {
     "pendulum": {
         "position": (120.0, TABLE_WIDTH * 0.28, TABLE_HEIGHT + 310.0),
-        "omega": (1.6, -4.2, 10.4),
+        "omega": (0.0, -45.0 * RPS, -35.0 * RPS),
         "velocity_adjust": (80.0, 0.0, -20.0),
     },
     "reverse_pendulum": {
         "position": (120.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 310.0),
-        "omega": (-1.6, 4.2, -10.4),
+        "omega": (0.0, -45.0 * RPS, 35.0 * RPS),
         "velocity_adjust": (-40.0, 0.0, 20.0),
     },
     "hook": {
         "position": (110.0, TABLE_WIDTH * 0.24, TABLE_HEIGHT + 300.0),
-        "omega": (0.8, -6.4, 13.6),
+        "omega": (0.0, -50.0 * RPS, -45.0 * RPS),
         "velocity_adjust": (200.0, 0.0, 0.0),
     },
     "tomahawk": {
         "position": (120.0, TABLE_WIDTH * 0.74, TABLE_HEIGHT + 315.0),
-        "omega": (10.4, 2.4, -4.8),
+        "omega": (50.0 * RPS, -30.0 * RPS, 0.0),
         "velocity_adjust": (60.0, 0.0, -10.0),
     },
     "reverse_tomahawk": {
         "position": (120.0, TABLE_WIDTH * 0.55, TABLE_HEIGHT + 315.0),
-        "omega": (-10.4, -2.4, 4.8),
+        "omega": (-50.0 * RPS, -30.0 * RPS, 0.0),
         "velocity_adjust": (40.0, 0.0, 0.0),
     },
     "backhand_standard": {
         "position": (130.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 305.0),
-        "omega": (-3.6, -1.8, 8.8),
+        "omega": (0.0, -40.0 * RPS, 35.0 * RPS),
         "depth_velocity": {
             "short": (4400.0, 0.0, -2390.0),
             "two_bounce": (5800.0, 0.0, -1755.0),
