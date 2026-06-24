@@ -287,6 +287,43 @@ def draw_racket(ax, center=(0, 0, 0), angle=(0, 0, 0)) -> None:
     ax.plot_surface(X, Y, Z, color="#8b5a2b", alpha=0.95, edgecolor="none")
 
 
+def _unit_vector(vector, fallback=(1.0, 0.0, 0.0)) -> np.ndarray:
+    vector = np.asarray(vector, dtype=float)
+    norm = np.linalg.norm(vector)
+    if norm < 1e-9:
+        return np.asarray(fallback, dtype=float)
+    return vector / norm
+
+
+def _bezier(points: np.ndarray, u: float) -> np.ndarray:
+    if len(points) == 1:
+        return points[0]
+    return _bezier((1.0 - u) * points[:-1] + u * points[1:], u)
+
+
+def _cubic_bezier_segment(p0, p3, v0, v3, duration: float, samples: int) -> np.ndarray:
+    p0 = np.asarray(p0, dtype=float)
+    p3 = np.asarray(p3, dtype=float)
+    p1 = p0 + np.asarray(v0, dtype=float) * duration / 3.0
+    p2 = p3 - np.asarray(v3, dtype=float) * duration / 3.0
+    points = np.array([p0, p1, p2, p3])
+    return np.array([_bezier(points, u) for u in np.linspace(0.0, 1.0, samples)])
+
+
+def racket_gesture_path(contact_point, racket_velocity, samples: int = 40) -> np.ndarray:
+    """Build a short racket path around impact from the racket velocity."""
+
+    direction = _unit_vector(racket_velocity)
+    contact_point = np.asarray(contact_point, dtype=float)
+    start = contact_point - 100.0 * direction
+    end = contact_point + 100.0 * direction
+    contact_velocity = np.asarray(racket_velocity, dtype=float)
+    segment_duration = 0.08
+    before = _cubic_bezier_segment(start, contact_point, (0, 0, 0), contact_velocity, segment_duration, samples // 2)
+    after = _cubic_bezier_segment(contact_point, end, contact_velocity, (0, 0, 0), segment_duration, samples - samples // 2)
+    return np.vstack([before[:-1], after])
+
+
 def draw_table(ax) -> None:
     """Draw the table, markings and net without clearing the axes."""
 
@@ -334,7 +371,20 @@ def draw_table(ax) -> None:
         )
 
 
-def plot_table(ax, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
+def plot_table(
+    ax,
+    pos,
+    vel,
+    acc,
+    orient,
+    ang_vel,
+    ang_acc,
+    yaw,
+    pitch,
+    racket_center=None,
+    racket_angle=(0.0, -10.0, 0.0),
+    racket_path=None,
+) -> None:
     """Draw the table, ball and vectors for a single frame."""
 
     ax.clear()
@@ -350,7 +400,13 @@ def plot_table(ax, pos, vel, acc, orient, ang_vel, ang_acc, yaw, pitch) -> None:
     ax.quiver(pos[0], pos[1], pos[2], vel[0], vel[1], vel[2], length=10 / 98, color="g")
     ax.quiver(pos[0], pos[1], pos[2], acc[0], acc[1], acc[2], length=1 / 49, color="c")
     ax.quiver(pos[0], pos[1], pos[2], ang_vel[0], ang_vel[1], ang_vel[2], length=1, color="r")
-    draw_racket(ax, center=(120.0, TABLE_WIDTH * 5 / 8, TABLE_HEIGHT + 300.0), angle=(0.0, -10.0, 0.0))
+    if racket_path is not None:
+        racket_path = np.asarray(racket_path, dtype=float)
+        ax.plot(racket_path[:, 0], racket_path[:, 1], racket_path[:, 2], color="black", linestyle=":", alpha=0.65)
+
+    if racket_center is None:
+        racket_center = (120.0, TABLE_WIDTH * 5 / 8, TABLE_HEIGHT + 300.0)
+    draw_racket(ax, center=racket_center, angle=racket_angle)
 
     ax.view_init(pitch, yaw)
     ax.set_xlabel("X (mm)")
@@ -377,7 +433,13 @@ def resolve_ffmpeg_path(ffmpeg_path: Optional[str] = None) -> Optional[str]:
     return shutil.which("ffmpeg")
 
 
-def animate_simulation(result: SimulationResult, save: Optional[str] = None, ffmpeg_path: Optional[str] = None) -> None:
+def animate_simulation(
+    result: SimulationResult,
+    save: Optional[str] = None,
+    ffmpeg_path: Optional[str] = None,
+    racket_path=None,
+    racket_angle=(0.0, -10.0, 0.0),
+) -> None:
     """Animate the trajectory using ``matplotlib.animation``."""
 
     import matplotlib.pyplot as plt
@@ -396,6 +458,12 @@ def animate_simulation(result: SimulationResult, save: Optional[str] = None, ffm
     ax = fig.add_subplot(111, projection="3d")
 
     def update(frame: int):
+        racket_center = None
+        if racket_path is not None:
+            path = np.asarray(racket_path, dtype=float)
+            path_index = int(round(frame / max(1, result.x.shape[1] - 1) * (len(path) - 1)))
+            racket_center = path[min(path_index, len(path) - 1)]
+
         plot_table(
             ax,
             result.x[:, frame],
@@ -406,6 +474,9 @@ def animate_simulation(result: SimulationResult, save: Optional[str] = None, ffm
             result.alpha[:, frame],
             YAW,
             PITCH,
+            racket_center=racket_center,
+            racket_angle=racket_angle,
+            racket_path=racket_path,
         )
 
     frames = range(0, result.x.shape[1], PLOT_PERIOD)

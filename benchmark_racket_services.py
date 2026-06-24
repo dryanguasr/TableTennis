@@ -24,6 +24,7 @@ from table_tennis_simulation import (
     TABLE_WIDTH,
     animate_simulation,
     racket_normal,
+    racket_gesture_path,
     resolve_ffmpeg_path,
     simulate_racket_impact,
 )
@@ -157,7 +158,14 @@ def case_filename(case: BenchmarkCase) -> str:
 def save_case_video(case: BenchmarkCase, result, video_dir: Path, ffmpeg_path: str | None) -> Path:
     video_dir.mkdir(parents=True, exist_ok=True)
     path = video_dir / case_filename(case)
-    animate_simulation(result, save=str(path), ffmpeg_path=ffmpeg_path)
+    racket_path = racket_gesture_path(case.params.ball_position, case.params.racket_velocity)
+    animate_simulation(
+        result,
+        save=str(path),
+        ffmpeg_path=ffmpeg_path,
+        racket_path=racket_path,
+        racket_angle=case.params.racket_angle,
+    )
     return path
 
 
