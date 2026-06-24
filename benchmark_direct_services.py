@@ -34,37 +34,37 @@ RPS = 2 * np.pi
 # Magnus lift/sideswerve are visible instead of near-dead-ball trajectories.
 SERVICE_TYPES = {
     "pendulum": {
-        "position": (-300.0, TABLE_WIDTH * 0.28, TABLE_HEIGHT + 310.0),
+        "position": (-300.0, TABLE_WIDTH * 0.16, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -45.0 * RPS, -35.0 * RPS),
-        "velocity_adjust": (80.0, 0.0, -20.0),
+        "velocity_adjust": (80.0, 0.0, 0.0),
     },
     "reverse_pendulum": {
-        "position": (-300.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 310.0),
+        "position": (-300.0, TABLE_WIDTH * 0.16, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -45.0 * RPS, 35.0 * RPS),
-        "velocity_adjust": (-40.0, 0.0, 20.0),
+        "velocity_adjust": (-40.0, 0.0, 0.0),
     },
     "hook": {
-        "position": (-300.0, TABLE_WIDTH * 0.24, TABLE_HEIGHT + 300.0),
+        "position": (-300.0, TABLE_WIDTH * 0.14, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -50.0 * RPS, -45.0 * RPS),
         "velocity_adjust": (200.0, 0.0, 0.0),
     },
     "tomahawk": {
-        "position": (-300.0, TABLE_WIDTH * 0.74, TABLE_HEIGHT + 315.0),
+        "position": (-300.0, TABLE_WIDTH * 0.74, TABLE_HEIGHT + 260.0),
         "omega": (50.0 * RPS, -30.0 * RPS, 0.0),
-        "velocity_adjust": (60.0, 0.0, -10.0),
+        "velocity_adjust": (60.0, 0.0, 0.0),
     },
     "reverse_tomahawk": {
-        "position": (-300.0, TABLE_WIDTH * 0.55, TABLE_HEIGHT + 315.0),
+        "position": (-300.0, TABLE_WIDTH * 0.68, TABLE_HEIGHT + 260.0),
         "omega": (-50.0 * RPS, -30.0 * RPS, 0.0),
         "velocity_adjust": (40.0, 0.0, 0.0),
     },
     "backhand_standard": {
-        "position": (-300.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 305.0),
+        "position": (-300.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -40.0 * RPS, 35.0 * RPS),
         "depth_velocity": {
-            "short": (4400.0, 0.0, -2390.0),
-            "two_bounce": (5800.0, 0.0, -1755.0),
-            "long": (7255.0, 0.0, -2360.0),
+            "short": (7200.0, 0.0, -2300.0),
+            "two_bounce": (8000.0, 0.0, -2300.0),
+            "long": (9000.0, 0.0, -2500.0),
         },
     },
 }
@@ -125,9 +125,9 @@ VELOCITY_OVERRIDES = {
     ("backhand_standard", "long", "backhand"): (8160.2, -2400.1, -3151.1),
 }
 DEPTHS = {
-    "short": {"vel": (4450.0, 0.0, -2140.0), "target_x": TABLE_LENGTH / 2 + 250.0},
-    "two_bounce": {"vel": (5600.0, 0.0, -2395.0), "target_x": TABLE_LENGTH / 2 + 650.0},
-    "long": {"vel": (7200.0, 0.0, -2350.0), "target_x": TABLE_LENGTH - 250.0},
+    "short": {"vel": (7200.0, 0.0, -2300.0), "target_x": TABLE_LENGTH / 2 + 220.0},
+    "two_bounce": {"vel": (8000.0, 0.0, -2300.0), "target_x": TABLE_LENGTH / 2 + 520.0},
+    "long": {"vel": (9000.0, 0.0, -2500.0), "target_x": TABLE_LENGTH - 360.0},
 }
 LANES = {
     "forehand": {"y": TABLE_WIDTH * 0.72},
@@ -136,9 +136,9 @@ LANES = {
 }
 LANE_VY = {
     "pendulum": {
-        "short": {"forehand": 2015.0, "elbow": 965.0, "backhand": -30.0},
-        "two_bounce": {"forehand": 1965.0, "elbow": 960.0, "backhand": -40.0},
-        "long": {"forehand": 1990.0, "elbow": 970.0, "backhand": -50.0},
+        "short": {"forehand": 4000.0, "elbow": 2700.0, "backhand": 1700.0},
+        "two_bounce": {"forehand": 4000.0, "elbow": 2800.0, "backhand": 1800.0},
+        "long": {"forehand": 4000.0, "elbow": 3000.0, "backhand": 2000.0},
     },
     "reverse_pendulum": {
         "short": {"forehand": 1030.0, "elbow": 30.0, "backhand": -975.0},
@@ -146,24 +146,24 @@ LANE_VY = {
         "long": {"forehand": 1070.0, "elbow": 50.0, "backhand": -970.0},
     },
     "hook": {
-        "short": {"forehand": 2180.0, "elbow": 1160.0, "backhand": 140.0},
-        "two_bounce": {"forehand": 2145.0, "elbow": 1135.0, "backhand": 125.0},
-        "long": {"forehand": 2205.0, "elbow": 1155.0, "backhand": 115.0},
+        "short": {"forehand": 4100.0, "elbow": 3000.0, "backhand": 1900.0},
+        "two_bounce": {"forehand": 4200.0, "elbow": 3100.0, "backhand": 2300.0},
+        "long": {"forehand": 4200.0, "elbow": 3200.0, "backhand": 2500.0},
     },
     "tomahawk": {
-        "short": {"forehand": -30.0, "elbow": -1025.0, "backhand": -2035.0},
-        "two_bounce": {"forehand": -20.0, "elbow": -1010.0, "backhand": -2005.0},
-        "long": {"forehand": -20.0, "elbow": -1040.0, "backhand": -2060.0},
+        "short": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
+        "two_bounce": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
+        "long": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
     },
     "reverse_tomahawk": {
-        "short": {"forehand": 710.0, "elbow": -290.0, "backhand": -1290.0},
-        "two_bounce": {"forehand": 695.0, "elbow": -290.0, "backhand": -1320.0},
-        "long": {"forehand": 715.0, "elbow": -305.0, "backhand": -1325.0},
+        "short": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3200.0},
+        "two_bounce": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3250.0},
+        "long": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3250.0},
     },
     "backhand_standard": {
-        "short": {"forehand": 940.0, "elbow": -45.0, "backhand": -1035.0},
-        "two_bounce": {"forehand": 975.0, "elbow": -50.0, "backhand": -1080.0},
-        "long": {"forehand": 970.0, "elbow": -65.0, "backhand": -1100.0},
+        "short": {"forehand": -450.0, "elbow": -1500.0, "backhand": -2500.0},
+        "two_bounce": {"forehand": -450.0, "elbow": -1500.0, "backhand": -2500.0},
+        "long": {"forehand": -500.0, "elbow": -1600.0, "backhand": -2500.0},
     },
 }
 TARGET_MARGIN_MM = 50.0
@@ -185,10 +185,6 @@ def build_cases() -> Iterable[BenchmarkCase]:
                 velocity = np.array(service.get("depth_velocity", {}).get(depth_name, depth["vel"]), dtype=float)
                 velocity += np.array(service.get("velocity_adjust", (0.0, 0.0, 0.0)), dtype=float)
                 velocity[1] = LANE_VY[service_name][depth_name][lane_name]
-                velocity = np.array(
-                    VELOCITY_OVERRIDES.get((service_name, depth_name, lane_name), tuple(velocity)),
-                    dtype=float,
-                )
                 position = service["position"]
                 yield BenchmarkCase(
                     service_name,

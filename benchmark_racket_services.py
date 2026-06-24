@@ -22,20 +22,21 @@ from table_tennis_simulation import (
     RacketImpactParameters,
     TABLE_HEIGHT,
     TABLE_WIDTH,
-    animate_simulation,
+    animate_racket_impact,
     racket_normal,
-    racket_gesture_path,
     resolve_ffmpeg_path,
     simulate_racket_impact,
 )
 
 SERVICE_TYPES = {
-    "pendulum": {"angle": (8.0, -34.0, -22.0)},
-    "reverse_pendulum": {"angle": (-8.0, -34.0, 22.0)},
-    "hook": {"angle": (4.0, -38.0, -35.0)},
-    "tomahawk": {"angle": (35.0, -30.0, 15.0)},
-    "reverse_tomahawk": {"angle": (-35.0, -30.0, -15.0)},
-    "backhand_standard": {"angle": (-5.0, -36.0, 12.0)},
+    # Angles are tuned for the visible racket posture at impact. The physics
+    # still solves racket velocity/spin from the direct benchmark target.
+    "pendulum": {"angle": (24.0, -34.0, -34.0)},
+    "reverse_pendulum": {"angle": (-24.0, -34.0, 34.0)},
+    "hook": {"angle": (18.0, -40.0, -48.0)},
+    "tomahawk": {"angle": (70.0, -20.0, 10.0)},
+    "reverse_tomahawk": {"angle": (70.0, -20.0, -10.0)},
+    "backhand_standard": {"angle": (-18.0, -34.0, 25.0)},
 }
 DEPTHS = {
     "short": {"speed_scale": 0.78, "restitution": 0.72, "friction": 0.82},
@@ -158,13 +159,11 @@ def case_filename(case: BenchmarkCase) -> str:
 def save_case_video(case: BenchmarkCase, result, video_dir: Path, ffmpeg_path: str | None) -> Path:
     video_dir.mkdir(parents=True, exist_ok=True)
     path = video_dir / case_filename(case)
-    racket_path = racket_gesture_path(case.params.ball_position, case.params.racket_velocity)
-    animate_simulation(
+    animate_racket_impact(
         result,
+        case.params,
         save=str(path),
         ffmpeg_path=ffmpeg_path,
-        racket_path=racket_path,
-        racket_angle=case.params.racket_angle,
     )
     return path
 

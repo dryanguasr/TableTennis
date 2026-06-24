@@ -324,6 +324,23 @@ def racket_gesture_path(contact_point, racket_velocity, samples: int = 40) -> np
     return np.vstack([before[:-1], after])
 
 
+def pre_impact_ball_path(contact_point, ball_velocity, samples: int = 24, duration: float = 0.12) -> np.ndarray:
+    """Build a short incoming ball path ending at the racket contact point."""
+
+    contact_point = np.asarray(contact_point, dtype=float)
+    ball_velocity = np.asarray(ball_velocity, dtype=float)
+    start = contact_point - _unit_vector(ball_velocity, fallback=(-1.0, 0.0, 0.0)) * np.linalg.norm(ball_velocity) * duration
+    return np.linspace(start, contact_point, samples)
+
+
+def _draw_ball(ax, center, color="white") -> None:
+    u, v_ang = np.mgrid[0 : 2 * np.pi : 25j, 0 : np.pi : 13j]
+    ball_x = BALL_RADIUS * np.cos(u) * np.sin(v_ang) + center[0]
+    ball_y = BALL_RADIUS * np.sin(u) * np.sin(v_ang) + center[1]
+    ball_z = BALL_RADIUS * np.cos(v_ang) + center[2]
+    ax.plot_surface(ball_x, ball_y, ball_z, color=color, edgecolor="none")
+
+
 def draw_table(ax) -> None:
     """Draw the table, markings and net without clearing the axes."""
 
@@ -391,11 +408,7 @@ def plot_table(
 
     draw_table(ax)
 
-    u, v_ang = np.mgrid[0 : 2 * np.pi : 25j, 0 : np.pi : 13j]
-    ball_x = BALL_RADIUS * np.cos(u) * np.sin(v_ang) + pos[0]
-    ball_y = BALL_RADIUS * np.sin(u) * np.sin(v_ang) + pos[1]
-    ball_z = BALL_RADIUS * np.cos(v_ang) + pos[2]
-    ax.plot_surface(ball_x, ball_y, ball_z, color="w", edgecolor="none")
+    _draw_ball(ax, pos)
 
     ax.quiver(pos[0], pos[1], pos[2], vel[0], vel[1], vel[2], length=10 / 98, color="g")
     ax.quiver(pos[0], pos[1], pos[2], acc[0], acc[1], acc[2], length=1 / 49, color="c")
@@ -484,6 +497,94 @@ def animate_simulation(
 
     if save:
         writer = animation.FFMpegWriter(fps=int(1 / (DT * PLOT_PERIOD)))
+        try:
+            ani.save(save, writer=writer)
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Cannot save MP4 because Matplotlib could not start FFmpeg. "
+                "Install FFmpeg and add it to PATH, or pass its executable path with --ffmpeg."
+            ) from exc
+    else:
+        plt.show()
+
+
+def animate_racket_impact(
+    result: SimulationResult,
+    params: RacketImpactParameters,
+    save: Optional[str] = None,
+    ffmpeg_path: Optional[str] = None,
+) -> None:
+    """Animate a racket-impact simulation with the pre-impact contact timing.
+
+    ``simulate_racket_impact`` returns a trajectory whose first sample is already
+    the contact point after the racket strike. The racket must therefore be at
+    the middle of its gesture at result frame 0; the first half of the gesture is
+    drawn only during synthetic pre-impact frames.
+    """
+
+    import matplotlib.pyplot as plt
+    from matplotlib import animation
+
+    ffmpeg = resolve_ffmpeg_path(ffmpeg_path) if save else None
+    if save and ffmpeg is None:
+        raise RuntimeError(
+            "Cannot save MP4 because FFmpeg was not found. Install FFmpeg and add it to PATH, "
+            "or pass its executable path with --ffmpeg."
+        )
+    if ffmpeg:
+        plt.rcParams["animation.ffmpeg_path"] = ffmpeg
+
+    racket_path = racket_gesture_path(params.ball_position, params.racket_velocity)
+    incoming_ball = pre_impact_ball_path(params.ball_position, params.ball_velocity)
+    dt = float(result.t[1] - result.t[0]) if result.t is not None and len(result.t) > 1 else DT
+    post_frames = list(range(0, result.x.shape[1], PLOT_PERIOD))
+    if post_frames[-1] != result.x.shape[1] - 1:
+        post_frames.append(result.x.shape[1] - 1)
+
+    total_frames = len(incoming_ball) + len(post_frames)
+    interval_ms = dt * 1000.0 * PLOT_PERIOD
+    contact_index = len(racket_path) // 2 - 1
+
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection="3d")
+
+    def set_axes() -> None:
+        ax.view_init(PITCH, YAW)
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
+        ax.set_xlim(-500, TABLE_LENGTH + 500)
+        ax.set_ylim(-500, TABLE_WIDTH + 500)
+        ax.set_zlim(0, 1500)
+        ax.grid(True)
+
+    def update(frame: int):
+        ax.clear()
+        draw_table(ax)
+        ax.plot(racket_path[:, 0], racket_path[:, 1], racket_path[:, 2], color="black", linestyle=":", alpha=0.65)
+        ax.plot(incoming_ball[:, 0], incoming_ball[:, 1], incoming_ball[:, 2], color="orange", linestyle="--", alpha=0.7)
+
+        if frame < len(incoming_ball):
+            ball_center = incoming_ball[frame]
+            racket_index = int(frame / max(1, len(incoming_ball) - 1) * contact_index)
+        else:
+            post_frame = post_frames[frame - len(incoming_ball)]
+            ball_center = result.x[:, post_frame]
+            progress = (frame - len(incoming_ball)) / max(1, len(post_frames) - 1)
+            racket_index = min(contact_index + 1 + int(progress * (len(racket_path) - contact_index - 1)), len(racket_path) - 1)
+            ax.plot(result.x[0, : post_frame + 1], result.x[1, : post_frame + 1], result.x[2, : post_frame + 1], color="purple")
+            ax.quiver(ball_center[0], ball_center[1], ball_center[2], result.v[0, post_frame], result.v[1, post_frame], result.v[2, post_frame], length=10 / 98, color="g")
+            ax.quiver(ball_center[0], ball_center[1], ball_center[2], result.a[0, post_frame], result.a[1, post_frame], result.a[2, post_frame], length=1 / 49, color="c")
+            ax.quiver(ball_center[0], ball_center[1], ball_center[2], result.omega[0, post_frame], result.omega[1, post_frame], result.omega[2, post_frame], length=1, color="r")
+
+        draw_racket(ax, center=racket_path[racket_index], angle=params.racket_angle)
+        _draw_ball(ax, ball_center)
+        set_axes()
+
+    ani = animation.FuncAnimation(fig, update, frames=total_frames, interval=interval_ms)
+
+    if save:
+        writer = animation.FFMpegWriter(fps=int(1 / (dt * PLOT_PERIOD)))
         try:
             ani.save(save, writer=writer)
         except FileNotFoundError as exc:
