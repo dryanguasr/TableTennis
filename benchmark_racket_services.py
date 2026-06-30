@@ -132,6 +132,7 @@ def _racket_params_from_direct_case(case: direct_services.BenchmarkCase) -> Rack
         racket_angle=racket_angle,
         racket_velocity=racket_velocity,
         ball_position=case.initial_conditions.pos,
+        contact_model="legacy",
     )
 
 

@@ -173,6 +173,17 @@ class SearchResult:
         return data
 
 
+@dataclass(frozen=True)
+class SearchProgress:
+    """Progress update emitted by global search and local polishing."""
+
+    phase: str
+    current: int
+    total: int
+    best_cost: float | None = None
+    message: str = ""
+
+
 def _table_bounce_indices(result) -> np.ndarray:
     contacts = np.isclose(result.x[2], TABLE_LEVEL, atol=1e-6) & (result.v[2] > 0)
     starts = contacts & np.concatenate(([True], ~contacts[:-1]))
@@ -336,19 +347,53 @@ def parameters_to_racket_vector(params: RacketImpactParameters) -> np.ndarray:
     )
 
 
+@dataclass(frozen=True)
+class _DirectObjective:
+    config: SearchConfig
+
+    def __call__(self, vector: np.ndarray) -> float:
+        ic = direct_vector_to_initial_conditions(vector)
+        result = simulate(ic, dt=self.config.dt, t_max=self.config.t_max)
+        return objective_from_metrics(
+            trajectory_metrics(result),
+            self.config.targets,
+            self.config.weights,
+            vector,
+        )
+
+
+@dataclass(frozen=True)
+class _RacketObjective:
+    config: RacketSearchConfig
+
+    def __call__(self, vector: np.ndarray) -> float:
+        params = racket_vector_to_parameters(vector)
+        result = simulate_racket_impact(params, dt=self.config.dt, t_max=self.config.t_max)
+        return objective_from_metrics(
+            trajectory_metrics(result),
+            self.config.targets,
+            self.config.weights,
+            vector,
+        )
+
+
 def _fallback_random_search(
     objective: Callable[[np.ndarray], float],
     bounds: list[tuple[float, float]],
     seed: int | None,
     iterations: int,
+    progress_callback: Callable[[SearchProgress], None] | None = None,
 ) -> tuple[np.ndarray, float, str]:
     rng = np.random.default_rng(seed)
     best_vector = np.array([np.mean(bound) for bound in bounds], dtype=float)
     best_cost = objective(best_vector)
     scale = np.array([bound[1] - bound[0] for bound in bounds], dtype=float)
     center = best_vector.copy()
-    for round_index in range(max(1, iterations // 20)):
-        samples = 20 if round_index else 80
+    rounds = max(1, iterations // 20)
+    sample_counts = [80] + [20] * max(0, rounds - 1)
+    total_samples = sum(sample_counts)
+    completed = 0
+    for round_index, samples in enumerate(sample_counts):
         for _ in range(samples):
             if round_index == 0:
                 candidate = np.array([rng.uniform(lo, hi) for lo, hi in bounds], dtype=float)
@@ -360,6 +405,17 @@ def _fallback_random_search(
                 best_vector = candidate
                 best_cost = cost
                 center = candidate
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(
+                    SearchProgress(
+                        phase="global",
+                        current=completed,
+                        total=total_samples,
+                        best_cost=float(best_cost),
+                        message="Búsqueda global sin SciPy",
+                    )
+                )
     return best_vector, float(best_cost), "fallback_random_search"
 
 
@@ -372,15 +428,38 @@ def _run_optimizer(
     seed: int | None,
     workers: int,
     initial_guess: np.ndarray | None = None,
+    progress_callback: Callable[[SearchProgress], None] | None = None,
 ) -> tuple[np.ndarray, float, str, str]:
+    if progress_callback is not None:
+        progress_callback(SearchProgress("global", 0, maxiter, message="Iniciando búsqueda global"))
     if differential_evolution is None:
         vector, cost, name = _fallback_random_search(
             objective,
             bounds,
             seed,
             iterations=max(300, maxiter * popsize * len(bounds)),
+            progress_callback=progress_callback,
         )
+        if progress_callback is not None:
+            progress_callback(SearchProgress("complete", 1, 1, best_cost=cost, message="Búsqueda terminada"))
         return vector, cost, name, "SciPy not available; used fallback random search."
+
+    generation = 0
+
+    def scipy_progress(xk, convergence):
+        nonlocal generation
+        generation += 1
+        if progress_callback is not None:
+            progress_callback(
+                SearchProgress(
+                    phase="global",
+                    current=min(generation, maxiter),
+                    total=maxiter,
+                    best_cost=float(objective(np.asarray(xk, dtype=float))),
+                    message=f"Convergencia: {convergence:.4g}",
+                )
+            )
+        return False
 
     result = differential_evolution(
         objective,
@@ -391,6 +470,7 @@ def _run_optimizer(
         seed=seed,
         workers=workers,
         updating="deferred" if workers != 1 else "immediate",
+        callback=scipy_progress,
     )
     vector = np.asarray(result.x, dtype=float)
     cost = float(result.fun)
@@ -404,11 +484,29 @@ def _run_optimizer(
             message += " Initial guess improved the result."
 
     if polish and minimize is not None:
+        polish_iteration = 0
+        polish_total = max(200, maxiter * 20)
+
+        def polish_progress(current_vector):
+            nonlocal polish_iteration
+            polish_iteration += 1
+            if progress_callback is not None:
+                progress_callback(
+                    SearchProgress(
+                        phase="polish",
+                        current=min(polish_iteration, polish_total),
+                        total=polish_total,
+                        best_cost=float(objective(np.asarray(current_vector, dtype=float))),
+                        message="Pulido local con Nelder-Mead",
+                    )
+                )
+
         polished = minimize(
             objective,
             vector,
             method="Nelder-Mead",
-            options={"maxiter": max(200, maxiter * 20), "xatol": 1e-2, "fatol": 1e-3},
+            callback=polish_progress,
+            options={"maxiter": polish_total, "xatol": 1e-2, "fatol": 1e-3},
         )
         if float(polished.fun) < cost:
             vector = np.asarray(polished.x, dtype=float)
@@ -416,12 +514,15 @@ def _run_optimizer(
             cost = float(objective(vector))
             message += " Polished with Nelder-Mead."
 
+    if progress_callback is not None:
+        progress_callback(SearchProgress("complete", 1, 1, best_cost=cost, message="Búsqueda terminada"))
     return vector, cost, "scipy.differential_evolution", message
 
 
 def search_direct_parameters(
     config: SearchConfig,
     initial_guess: InitialConditions | np.ndarray | None = None,
+    progress_callback: Callable[[SearchProgress], None] | None = None,
 ) -> SearchResult:
     bounds = config.space.bounds()
     guess_vector = None
@@ -430,15 +531,7 @@ def search_direct_parameters(
     elif initial_guess is not None:
         guess_vector = np.asarray(initial_guess, dtype=float)
 
-    def objective(vector: np.ndarray) -> float:
-        ic = direct_vector_to_initial_conditions(vector)
-        result = simulate(ic, dt=config.dt, t_max=config.t_max)
-        return objective_from_metrics(
-            trajectory_metrics(result),
-            config.targets,
-            config.weights,
-            vector,
-        )
+    objective = _DirectObjective(config)
 
     vector, cost, optimizer, message = _run_optimizer(
         objective,
@@ -449,6 +542,7 @@ def search_direct_parameters(
         config.seed,
         config.workers,
         initial_guess=guess_vector,
+        progress_callback=progress_callback,
     )
     ic = direct_vector_to_initial_conditions(vector)
     result = simulate(ic, dt=config.dt, t_max=config.t_max)
@@ -471,6 +565,7 @@ def search_direct_parameters(
 def search_racket_parameters(
     config: RacketSearchConfig,
     initial_guess: RacketImpactParameters | np.ndarray | None = None,
+    progress_callback: Callable[[SearchProgress], None] | None = None,
 ) -> SearchResult:
     bounds = config.space.bounds()
     guess_vector = None
@@ -479,15 +574,7 @@ def search_racket_parameters(
     elif initial_guess is not None:
         guess_vector = np.asarray(initial_guess, dtype=float)
 
-    def objective(vector: np.ndarray) -> float:
-        params = racket_vector_to_parameters(vector)
-        result = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)
-        return objective_from_metrics(
-            trajectory_metrics(result),
-            config.targets,
-            config.weights,
-            vector,
-        )
+    objective = _RacketObjective(config)
 
     vector, cost, optimizer, message = _run_optimizer(
         objective,
@@ -498,6 +585,7 @@ def search_racket_parameters(
         config.seed,
         config.workers,
         initial_guess=guess_vector,
+        progress_callback=progress_callback,
     )
     params = racket_vector_to_parameters(vector)
     result = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)

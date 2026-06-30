@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -58,6 +58,18 @@ class SimulationResult:
     omega: np.ndarray
     alpha: np.ndarray
     t: Optional[np.ndarray] = None
+    events: Tuple["SimulationEvent", ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class SimulationEvent:
+    """Discrete event emitted by the numerical simulation."""
+
+    kind: str
+    index: int
+    time: float
+    point: Tuple[float, float, float]
+    side: Optional[str] = None
 
 
 @dataclass
@@ -76,6 +88,7 @@ class RacketImpactParameters:
     racket_angle: Tuple[float, float, float] = (0.0, -30.0, 0.0)
     racket_velocity: Tuple[float, float, float] = (2000.0, 0.0, 1000.0)
     ball_position: Tuple[float, float, float] = (200.0, TABLE_WIDTH / 2, TABLE_HEIGHT + 240.0)
+    contact_model: str = "coulomb"
 
 
 @dataclass
@@ -110,6 +123,8 @@ def simulate(ic: InitialConditions, dt: float = DT, t_max: float = T_MAX) -> Sim
     theta = np.zeros((3, n))
     omega = np.zeros((3, n))
     alpha = np.zeros((3, n))
+    events = []
+    net_contact_active = False
 
     x[:, 0] = ic.pos
     v[:, 0] = ic.vel
@@ -125,6 +140,20 @@ def simulate(ic: InitialConditions, dt: float = DT, t_max: float = T_MAX) -> Sim
         v[:, k] = v[:, k - 1] + a[:, k] * dt
         x[:, k] = x[:, k - 1] + v[:, k] * dt
 
+        previous_net_offset = x[0, k - 1] - TABLE_LENGTH / 2
+        current_net_offset = x[0, k] - TABLE_LENGTH / 2
+        if previous_net_offset * current_net_offset <= 0 and previous_net_offset != current_net_offset:
+            fraction = float(np.clip(-previous_net_offset / (current_net_offset - previous_net_offset), 0.0, 1.0))
+            crossing_point = x[:, k - 1] + fraction * (x[:, k] - x[:, k - 1])
+            events.append(
+                SimulationEvent(
+                    kind="net_cross",
+                    index=k,
+                    time=float(t[k - 1] + fraction * dt),
+                    point=tuple(float(value) for value in crossing_point),
+                )
+            )
+
         tau = -ROT_DRAG * omega[:, k - 1]
         alpha[:, k] = tau / BALL_ROT_INERTIA
         omega[:, k] = omega[:, k - 1] + alpha[:, k] * dt
@@ -132,22 +161,37 @@ def simulate(ic: InitialConditions, dt: float = DT, t_max: float = T_MAX) -> Sim
 
         if (0 < x[0, k] < TABLE_LENGTH and 0 < x[1, k] < TABLE_WIDTH and x[2, k] < TABLE_HEIGHT + BALL_RADIUS):
             x[2, k] = TABLE_HEIGHT + BALL_RADIUS
-            delta_lin_rot = np.cross(omega[:, k], np.array([0.0, 0.0, BALL_RADIUS])) - np.array(
-                [v[0, k], v[1, k], 0.0]
+            v[:, k], omega[:, k] = apply_table_impact(v[:, k], omega[:, k])
+            events.append(
+                SimulationEvent(
+                    kind="table_bounce",
+                    index=k,
+                    time=float(t[k]),
+                    point=tuple(float(value) for value in x[:, k]),
+                    side="server" if x[0, k] < TABLE_LENGTH / 2 else "receiver",
+                )
             )
-            v[:, k] += TABLE_FRICTION * delta_lin_rot
-            omega[:, k] += TABLE_FRICTION * np.cross(delta_lin_rot, np.array([0.0, 0.0, 1.0])) / BALL_RADIUS
-            v[2, k] = -TABLE_RESTITUTION * v[2, k]
 
-        if (
+        in_net = (
             TABLE_LENGTH / 2 - BALL_RADIUS <= x[0, k] <= TABLE_LENGTH / 2 + BALL_RADIUS
             and -NET_EXTRA <= x[1, k] <= TABLE_WIDTH + NET_EXTRA
             and TABLE_HEIGHT + BALL_RADIUS < x[2, k] < TABLE_HEIGHT + NET_HEIGHT + BALL_RADIUS
-        ):
+        )
+        if in_net:
+            if not net_contact_active:
+                events.append(
+                    SimulationEvent(
+                        kind="net_contact",
+                        index=k,
+                        time=float(t[k]),
+                        point=tuple(float(value) for value in x[:, k]),
+                    )
+                )
             omega[:, k] = NET_RESTITUTION * omega[:, k]
             v[0, k] = -NET_RESTITUTION * v[0, k]
+        net_contact_active = in_net
 
-    return SimulationResult(x, v, a, theta, omega, alpha, t)
+    return SimulationResult(x, v, a, theta, omega, alpha, t, tuple(events))
 
 
 def _rotation_matrix_xyz(angles_deg: Tuple[float, float, float]) -> np.ndarray:
@@ -167,6 +211,47 @@ def racket_normal(racket_angle: Tuple[float, float, float]) -> np.ndarray:
     return normal / np.linalg.norm(normal)
 
 
+def _limited_tangential_impulse(
+    slip_velocity: np.ndarray,
+    normal_impulse_magnitude: float,
+    friction: float,
+) -> np.ndarray:
+    """Return the sticking impulse capped by Coulomb friction."""
+
+    effective_inverse_mass = 1.0 / BALL_MASS + BALL_RADIUS**2 / BALL_ROT_INERTIA
+    sticking_impulse = -np.asarray(slip_velocity, dtype=float) / effective_inverse_mass
+    maximum_impulse = max(0.0, friction) * abs(normal_impulse_magnitude)
+    magnitude = float(np.linalg.norm(sticking_impulse))
+    if magnitude <= maximum_impulse or magnitude < 1e-12:
+        return sticking_impulse
+    return sticking_impulse * (maximum_impulse / magnitude)
+
+
+def apply_table_impact(
+    velocity: np.ndarray,
+    angular_velocity: np.ndarray,
+    restitution: float = TABLE_RESTITUTION,
+    friction: float = TABLE_FRICTION,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Resolve a table bounce using normal restitution and Coulomb friction."""
+
+    post_v = np.asarray(velocity, dtype=float).copy()
+    post_w = np.asarray(angular_velocity, dtype=float).copy()
+    incoming_vz = float(post_v[2])
+    normal_impulse_magnitude = BALL_MASS * (1.0 + restitution) * abs(incoming_vz)
+    contact_radius = np.array([0.0, 0.0, -BALL_RADIUS])
+    slip_velocity = np.array([post_v[0], post_v[1], 0.0]) + np.cross(post_w, contact_radius)
+    tangential_impulse = _limited_tangential_impulse(
+        slip_velocity,
+        normal_impulse_magnitude,
+        friction,
+    )
+    post_v += tangential_impulse / BALL_MASS
+    post_w += np.cross(contact_radius, tangential_impulse) / BALL_ROT_INERTIA
+    post_v[2] = -restitution * incoming_vz
+    return post_v, post_w
+
+
 def apply_racket_impact(params: RacketImpactParameters) -> InitialConditions:
     """Compute post-impact ball initial conditions for a racket strike.
 
@@ -181,18 +266,32 @@ def apply_racket_impact(params: RacketImpactParameters) -> InitialConditions:
     normal = racket_normal(params.racket_angle)
 
     relative_v = ball_v - racket_v
-    normal_speed = np.dot(relative_v, normal)
-    relative_normal = normal_speed * normal
-    relative_tangent = relative_v - relative_normal
-
+    normal_speed = float(np.dot(relative_v, normal))
     restitution = np.clip(params.rubber_restitution, 0.0, 1.5)
     friction = np.clip(params.rubber_friction, 0.0, 2.0)
-    post_relative_v = relative_tangent * max(0.0, 1.0 - friction) - restitution * relative_normal
-    post_v = racket_v + post_relative_v
+    if params.contact_model == "legacy":
+        relative_normal = normal_speed * normal
+        relative_tangent = relative_v - relative_normal
+        post_relative_v = relative_tangent * max(0.0, 1.0 - friction) - restitution * relative_normal
+        post_v = racket_v + post_relative_v
+        contact_radius = -BALL_RADIUS * normal
+        surface_slip = relative_tangent + np.cross(ball_w, contact_radius)
+        post_w = ball_w - friction * np.cross(contact_radius, surface_slip) / (BALL_RADIUS**2)
+        return InitialConditions(pos=params.ball_position, vel=tuple(post_v), omega=tuple(post_w))
+    if params.contact_model != "coulomb":
+        raise ValueError(f"Unknown racket contact model: {params.contact_model}")
 
+    normal_impulse = -BALL_MASS * (1.0 + restitution) * normal_speed * normal
     contact_radius = -BALL_RADIUS * normal
+    relative_tangent = relative_v - normal_speed * normal
     surface_slip = relative_tangent + np.cross(ball_w, contact_radius)
-    post_w = ball_w - friction * np.cross(contact_radius, surface_slip) / (BALL_RADIUS**2)
+    tangential_impulse = _limited_tangential_impulse(
+        surface_slip,
+        float(np.linalg.norm(normal_impulse)),
+        friction,
+    )
+    post_v = ball_v + (normal_impulse + tangential_impulse) / BALL_MASS
+    post_w = ball_w + np.cross(contact_radius, tangential_impulse) / BALL_ROT_INERTIA
 
     return InitialConditions(pos=params.ball_position, vel=tuple(post_v), omega=tuple(post_w))
 
@@ -216,7 +315,16 @@ def identify_trajectory_moments(result: SimulationResult, table_level: float = T
     x, z, vz = result.x[0], result.x[2], result.v[2]
     moments: Dict[int, TrajectoryMoment] = {}
 
-    bounce_candidates = np.where((x >= TABLE_LENGTH / 2) & (np.isclose(z, table_level, atol=1e-6)) & (vz > 0))[0]
+    bounce_candidates = np.asarray(
+        [
+            event.index
+            for event in result.events
+            if event.kind == "table_bounce" and event.side == "receiver"
+        ],
+        dtype=int,
+    )
+    if bounce_candidates.size == 0:
+        bounce_candidates = np.where((x >= TABLE_LENGTH / 2) & (np.isclose(z, table_level, atol=1e-6)) & (vz > 0))[0]
     if bounce_candidates.size == 0:
         bounce_candidates = np.where((x >= TABLE_LENGTH / 2) & (z <= table_level) & (vz > 0))[0]
     if bounce_candidates.size == 0:
@@ -225,27 +333,34 @@ def identify_trajectory_moments(result: SimulationResult, table_level: float = T
     i1 = int(bounce_candidates[0])
     moments[1] = TrajectoryMoment("primer impacto en el lado contrario", i1, float(t[i1]), tuple(result.x[:, i1]))
 
-    post = np.arange(i1, result.x.shape[1])
-    rising = post[vz[post] > 0]
+    later_bounces = bounce_candidates[bounce_candidates > i1]
+    if later_bounces.size:
+        i5 = int(later_bounces[0])
+    else:
+        later_indices = np.arange(i1 + 1, result.x.shape[1])
+        arrivals = later_indices[z[later_indices] <= table_level]
+        i5 = int(arrivals[0]) if arrivals.size else result.x.shape[1] - 1
+    arc = np.arange(i1, i5 + 1)
+    apex_i = int(arc[np.argmax(z[arc])])
+
+    rising = np.arange(i1 + 1, apex_i)
     if rising.size:
         r0, r1 = int(rising[0]), int(rising[-1])
         mid_i = int(round((r0 + r1) / 2))
         moments[2] = TrajectoryMoment("fase ascendente", mid_i, float(t[mid_i]), tuple(result.x[:, mid_i]), (float(t[r0]), float(t[r1])), tuple(result.x[:, mid_i]))
 
-    apex_i = int(post[np.argmax(z[post])])
     moments[3] = TrajectoryMoment("punto más alto", apex_i, float(t[apex_i]), tuple(result.x[:, apex_i]))
 
-    descending = post[(post > apex_i) & (z[post] >= table_level)]
+    descending = np.arange(apex_i + 1, i5)
     if descending.size:
         d0, d1 = int(descending[0]), int(descending[-1])
         mid_i = int(round((d0 + d1) / 2))
         moments[4] = TrajectoryMoment("fase descendente sobre la mesa", mid_i, float(t[mid_i]), tuple(result.x[:, mid_i]), (float(t[d0]), float(t[d1])), tuple(result.x[:, mid_i]))
 
-    arrivals = post[(post > apex_i) & (z[post] <= table_level)]
-    if arrivals.size:
-        i5 = int(arrivals[0])
+    if i5 < result.x.shape[1] - 1:
         moments[5] = TrajectoryMoment("segunda llegada al nivel de la mesa", i5, float(t[i5]), tuple(result.x[:, i5]))
-        below = post[(post > i5) & (z[post] < table_level)]
+        post = np.arange(i5 + 1, result.x.shape[1])
+        below = post[z[post] < table_level]
         if below.size:
             i6 = int(below[0])
             moments[6] = TrajectoryMoment("bola por debajo del nivel de la mesa", i6, float(t[i6]), tuple(result.x[:, i6]))
