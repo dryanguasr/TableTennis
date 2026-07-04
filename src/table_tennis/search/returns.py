@@ -7,12 +7,12 @@ contact timing, racket orientation and racket velocity.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Iterable, Literal
 
 import numpy as np
 
-from table_tennis_simulation import (
+from ..constants import (
     BALL_MASS,
     BALL_RADIUS,
     BALL_ROT_INERTIA,
@@ -21,15 +21,30 @@ from table_tennis_simulation import (
     TABLE_HEIGHT,
     TABLE_LENGTH,
     TABLE_WIDTH,
+)
+from ..events import table_bounces
+from ..exchange import (
+    ContactSelection,
+    ExchangeResult,
+    RubberProperties,
+    ServiceTargets,
+    StrokeTargets,
+    ValidationReport,
+    contact_index,
+    contact_state,
+    simulate_exchange,
+)
+from ..models import (
     InitialConditions,
     RacketImpactParameters,
     SimulationResult,
-    TrajectoryMoment,
+)
+from ..physics import (
     apply_racket_impact,
-    identify_trajectory_moments,
-    simulate,
     simulate_racket_impact,
 )
+from ..presets.returns import PILOT_SERVICE_PARAMS, RETURN_PRESET_VECTORS
+from ..validation import validate_return, validate_service
 
 try:
     from scipy.optimize import differential_evolution, minimize
@@ -40,116 +55,8 @@ except Exception:  # pragma: no cover - depends on the user's environment.
 
 RPS = 2 * np.pi
 NET_CLEARANCE_LEVEL = TABLE_HEIGHT + NET_HEIGHT + BALL_RADIUS
-SERVICE_DEPTH_X = {
-    "short": TABLE_LENGTH / 2 + 220.0,
-    "two_bounce": TABLE_LENGTH / 2 + 520.0,
-    "long": TABLE_LENGTH - 360.0,
-}
-RETURN_DEPTH_X = {
-    "short": TABLE_LENGTH / 2 - 270.0,
-    "two_bounce": TABLE_LENGTH / 2 - 450.0,
-    "long": 360.0,
-}
-SERVICE_DIRECTION_Y = {
-    "forehand": TABLE_WIDTH * 0.72,
-    "elbow": TABLE_WIDTH * 0.50,
-    "backhand": TABLE_WIDTH * 0.28,
-}
-# The receiver and server face opposite directions.  Labels are relative to
-# the player who will receive the shot, assuming right-handed players.
-RETURN_DIRECTION_Y = {
-    "forehand": TABLE_WIDTH * 0.28,
-    "elbow": TABLE_WIDTH * 0.50,
-    "backhand": TABLE_WIDTH * 0.72,
-}
-
-
 @dataclass(frozen=True)
-class ContactSelection:
-    moment: Literal[2, 3, 4] = 4
-    fraction: float = 0.5
-
-
-@dataclass(frozen=True)
-class RubberProperties:
-    friction: float = 1.2
-    restitution: float = 0.8
-
-
-@dataclass(frozen=True)
-class StrokeTargets:
-    depth: Literal["short", "two_bounce", "long"] = "two_bounce"
-    direction: Literal["forehand", "elbow", "backhand"] = "elbow"
-    spin_rps: tuple[float, float, float] = (0.0, 45.0, 0.0)
-    stroke_side: Literal["forehand", "backhand"] = "backhand"
-    bounce_tolerance_mm: float = 75.0
-    spin_tolerance_rps: float = 10.0
-    min_net_clearance_mm: float = 5.0
-    max_net_clearance_mm: float | None = None
-    max_height_above_table_mm: float | None = None
-    target_x: float | None = None
-    target_y: float | None = None
-
-    @property
-    def target_point(self) -> tuple[float, float]:
-        return (
-            RETURN_DEPTH_X[self.depth] if self.target_x is None else self.target_x,
-            RETURN_DIRECTION_Y[self.direction] if self.target_y is None else self.target_y,
-        )
-
-
-@dataclass(frozen=True)
-class ServiceTargets:
-    depth: Literal["short", "two_bounce", "long"] = "short"
-    direction: Literal["forehand", "elbow", "backhand"] = "elbow"
-    spin_rps: tuple[float, float, float] = (0.0, -45.0, 35.0)
-    bounce_tolerance_mm: float = 75.0
-    spin_tolerance_rps: float = 10.0
-    min_net_clearance_mm: float = 5.0
-    target_x: float | None = None
-    target_y: float | None = None
-
-    @property
-    def target_point(self) -> tuple[float, float]:
-        return (
-            SERVICE_DEPTH_X[self.depth] if self.target_x is None else self.target_x,
-            SERVICE_DIRECTION_Y[self.direction] if self.target_y is None else self.target_y,
-        )
-
-
-@dataclass(frozen=True)
-class ValidationReport:
-    passed: bool
-    violations: tuple[str, ...]
-    target_point: tuple[float, float]
-    first_bounce: tuple[float, float] | None
-    bounce_error_mm: float
-    spin_error_rps: float
-    net_clearance_mm: float
-    bounces_on_target_side: int
-
-    def to_dict(self) -> dict[str, object]:
-        return asdict(self)
-
-
-@dataclass
-class ExchangeResult:
-    service_params: RacketImpactParameters
-    service_result: SimulationResult
-    contact: ContactSelection
-    contact_index: int
-    return_params: RacketImpactParameters
-    return_result: SimulationResult
-    service_validation: ValidationReport
-    return_validation: ValidationReport
-
-    @property
-    def passed(self) -> bool:
-        return self.service_validation.passed and self.return_validation.passed
-
-
-@dataclass(frozen=True)
-class SearchConfig:
+class ReturnSearchConfig:
     maxiter: int = 180
     popsize: int = 18
     restarts: int = 5
@@ -161,7 +68,7 @@ class SearchConfig:
 
 
 @dataclass
-class ParameterSearchResult:
+class ReturnSearchResult:
     success: bool
     cost: float
     vector: tuple[float, ...]
@@ -174,35 +81,12 @@ class ParameterSearchResult:
     message: str = ""
 
 
-PILOT_SERVICE_PARAMS = RacketImpactParameters(
-    ball_velocity=(0.0, 0.0, -2500.0),
-    ball_omega=(0.0, 0.0, 0.0),
-    rubber_friction=1.2,
-    rubber_restitution=0.8,
-    racket_angle=(80.0, -39.917547723834424, 43.99328907077693),
-    racket_velocity=(11889.392438867555, -3254.6407255923978, -7032.871005925697),
-    ball_position=(-300.0, TABLE_WIDTH * 0.16, TABLE_HEIGHT + 260.0),
-)
-
-
-# Search-space solutions for point 4 of the pilot service.  Vectors contain
-# contact fraction, racket Y/Z angles and racket X/Y/Z velocity.  Forehand and
-# backhand use opposite blade roll around X.
-RETURN_PRESET_VECTORS = {
-    "cut_short": (0.50, -78.14191918, 153.86744395, -8364.4985, -3688.3990, -563.4203),
-    "cut_two_bounce": (0.52, -73.68370336, 169.25697650, -7472.91053468, -3236.43705113, -1223.39926964),
-    "cut_long": (0.52, -60.99848906, 174.49909112, -7186.06164702, -1724.03438608, -2415.93112993),
-    "top_two_bounce": (0.50, 60.33717674, 80.28041765, -8691.60743428, 230.93454907, 102.63689315),
-    "top_long": (0.50, 3.10621828, 179.51627300, -3109.31230000, -766.79326200, 8048.41311000),
-}
-
-
-def table_bounces(result: SimulationResult, side: str | None = None):
+def _unused_table_bounces(result: SimulationResult, side: str | None = None):
     events = [event for event in result.events if event.kind == "table_bounce"]
     return [event for event in events if side is None or event.side == side]
 
 
-def net_crossings(result: SimulationResult):
+def _unused_net_crossings(result: SimulationResult):
     return [event for event in result.events if event.kind == "net_cross"]
 
 
@@ -233,7 +117,7 @@ def _depth_bounce_violation(depth: str, count: int) -> str | None:
     return None
 
 
-def validate_service(
+def _unused_validate_service(
     params: RacketImpactParameters,
     result: SimulationResult,
     targets: ServiceTargets = ServiceTargets(),
@@ -294,7 +178,7 @@ def validate_service(
     )
 
 
-def validate_return(
+def _unused_validate_return(
     params: RacketImpactParameters,
     result: SimulationResult,
     targets: StrokeTargets,
@@ -390,7 +274,7 @@ def validate_return(
     )
 
 
-def contact_index(
+def _unused_contact_index(
     service_result: SimulationResult,
     selection: ContactSelection,
 ) -> int:
@@ -408,11 +292,11 @@ def contact_index(
     return int(np.argmin(np.abs(times - target_time)))
 
 
-def contact_state(
+def _unused_contact_state(
     service_result: SimulationResult,
     selection: ContactSelection,
 ) -> tuple[int, InitialConditions]:
-    index = contact_index(service_result, selection)
+    index = _unused_contact_index(service_result, selection)
     return index, InitialConditions(
         pos=tuple(float(value) for value in service_result.x[:, index]),
         vel=tuple(float(value) for value in service_result.v[:, index]),
@@ -534,7 +418,7 @@ def build_return_preset(
     return return_params_from_vector(service_result, targets, RETURN_PRESET_VECTORS[name])
 
 
-def simulate_exchange(
+def _unused_simulate_exchange(
     service_params: RacketImpactParameters,
     return_params: RacketImpactParameters,
     contact: ContactSelection,
@@ -718,7 +602,7 @@ def _fallback_differential_evolution(
 def _run_search(
     objective: Callable[[np.ndarray], float],
     bounds: list[tuple[float, float]],
-    config: SearchConfig,
+    config: ReturnSearchConfig,
     seed: int,
     initial_guess: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float, str, str]:
@@ -764,9 +648,9 @@ def search_return(
     targets: StrokeTargets,
     contact: ContactSelection = ContactSelection(),
     rubber: RubberProperties = RubberProperties(),
-    config: SearchConfig = SearchConfig(),
+    config: ReturnSearchConfig = ReturnSearchConfig(),
     use_validated_preset: bool = True,
-) -> ParameterSearchResult:
+) -> ReturnSearchResult:
     spin = np.asarray(targets.spin_rps, dtype=float)
     if contact.moment == 3:
         fraction_bounds = (0.499999, 0.500001)
@@ -831,7 +715,7 @@ def search_return(
         trajectory = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)
         validation = validate_return(params, trajectory, targets)
         if validation.passed:
-            return ParameterSearchResult(
+            return ReturnSearchResult(
                 success=True,
                 cost=float(objective(initial_guess)),
                 vector=tuple(float(value) for value in initial_guess),
@@ -870,7 +754,7 @@ def search_return(
         )
         trajectory = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)
         validation = validate_return(params, trajectory, targets)
-        candidate = ParameterSearchResult(
+        candidate = ReturnSearchResult(
             success=validation.passed,
             cost=cost,
             vector=tuple(float(value) for value in vector),
@@ -895,8 +779,8 @@ def search_return(
 def search_service(
     targets: ServiceTargets = ServiceTargets(),
     rubber: RubberProperties = RubberProperties(friction=1.2, restitution=0.8),
-    config: SearchConfig = SearchConfig(),
-) -> ParameterSearchResult:
+    config: ReturnSearchConfig = ReturnSearchConfig(),
+) -> ReturnSearchResult:
     """Search the reverse-pendulum service while keeping toss and rubber fixed."""
 
     spin = np.asarray(targets.spin_rps, dtype=float)
@@ -926,7 +810,7 @@ def search_service(
         params = _service_params_from_vector(targets, rubber, vector)
         trajectory = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)
         validation = validate_service(params, trajectory, targets)
-        candidate = ParameterSearchResult(
+        candidate = ReturnSearchResult(
             success=validation.passed,
             cost=cost,
             vector=tuple(float(value) for value in vector),

@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from service_parameter_search import _fallback_random_search
+from table_tennis.search.service import _fallback_random_search
 
 
 class ServiceParameterSearchProgressTests(unittest.TestCase):

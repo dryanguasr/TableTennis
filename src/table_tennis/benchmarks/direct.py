@@ -16,16 +16,10 @@ from typing import Iterable
 
 import numpy as np
 
-from table_tennis_simulation import (
-    BALL_RADIUS,
-    InitialConditions,
-    TABLE_HEIGHT,
-    TABLE_LENGTH,
-    TABLE_WIDTH,
-    animate_simulation,
-    resolve_ffmpeg_path,
-    simulate,
-)
+from ..constants import BALL_RADIUS, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..models import InitialConditions
+from ..physics import simulate
+from ..visualization import animate_simulation, resolve_ffmpeg_path
 
 RPS = 2 * np.pi
 
@@ -277,14 +271,14 @@ def run_case(
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Benchmark direct-condition table-tennis serve simulations.")
     parser.add_argument("--repeat", type=int, default=20, help="Runs per serve variant.")
     parser.add_argument("--dt", type=float, default=0.005, help="Simulation step in seconds.")
     parser.add_argument("--t-max", type=float, default=3.0, help="Simulation horizon in seconds.")
     parser.add_argument("--video-dir", type=Path, help="Directory where one MP4 per serve variant is saved.")
     parser.add_argument("--ffmpeg", help="Path to the FFmpeg executable used for MP4 output.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     ffmpeg_path = None
     if args.video_dir is not None:

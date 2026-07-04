@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "table-tennis-physics"
+version = "0.1.0"
+description = "Physics-based table-tennis serve and return simulator"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+search = [
+    "scipy>=1.10",
+]
+visualization = [
+    "matplotlib>=3.7",
+]
+notebooks = [
+    "ipykernel>=7.0",
+    "ipywidgets>=8.0",
+    "jupyterlab>=4.0",
+    "matplotlib>=3.7",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "scipy>=1.10",
+]
+dev = [
+    "ipykernel>=7.0",
+    "ipywidgets>=8.0",
+    "jupyterlab>=4.0",
+    "matplotlib>=3.7",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "scipy>=1.10",
+]
+
+[project.scripts]
+table-tennis = "table_tennis.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 from pathlib import Path
 
-from benchmark_racket_services import build_cases, case_filename
+from ..benchmarks.racket import build_cases, case_filename
 
 
 SERVICE_LABELS = {
@@ -34,7 +36,10 @@ def rounded_tuple(values, digits: int = 2) -> list[float]:
     return [round(float(value), digits) for value in values]
 
 
-def build_viewer_data(video_dir: Path) -> list[dict[str, object]]:
+def build_viewer_data(
+    video_dir: Path,
+    viewer_dir: Path = Path("."),
+) -> list[dict[str, object]]:
     cases = []
     for case in build_cases():
         params = case.params
@@ -54,7 +59,9 @@ def build_viewer_data(video_dir: Path) -> list[dict[str, object]]:
                     f"{DEPTH_LABELS.get(case.depth, case.depth)} / "
                     f"{LANE_LABELS.get(case.lane, case.lane)}"
                 ),
-                "video": str(video_path.as_posix()),
+                "video": Path(
+                    os.path.relpath(video_path, start=viewer_dir)
+                ).as_posix(),
                 "videoExists": video_path.exists(),
                 "ballPosition": rounded_tuple(params.ball_position),
                 "incomingBallVelocity": rounded_tuple(params.ball_velocity),
@@ -401,7 +408,7 @@ HTML_TEMPLATE = """<!doctype html>
   <div class="app">
     <aside>
       <h1>Benchmark con raqueta</h1>
-      <p class="subtitle">54 servicios animados con los parámetros de `benchmark_racket_services.py`.</p>
+      <p class="subtitle">54 servicios animados con los presets del paquete <code>table_tennis</code>.</p>
       <div class="filters">
         <div>
           <label for="serviceFilter">Servicio</label>
@@ -548,7 +555,7 @@ HTML_TEMPLATE = """<!doctype html>
 
       $("videoShell").innerHTML = item.videoExists
         ? `<video id="serviceVideo" src="${{item.video}}" controls autoplay muted loop playsinline></video>`
-        : `<div class="missing">No encontré el archivo <code>${{item.video}}</code>. Genera los videos con <code>python benchmark_racket_services.py</code>.</div>`;
+        : `<div class="missing">No encontré el archivo <code>${{item.video}}</code>. Genéralo con <code>table-tennis benchmark racket</code>.</div>`;
 
       $("frictionStat").textContent = item.rubberFriction.toFixed(2);
       $("restitutionStat").textContent = item.rubberRestitution.toFixed(2);
@@ -597,10 +604,22 @@ HTML_TEMPLATE = """<!doctype html>
 """
 
 
-def main() -> None:
-    output = Path("racket_benchmark_viewer.html")
-    video_dir = Path("benchmark_racket_services")
-    cases = build_viewer_data(video_dir)
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("outputs/viewers/racket_benchmark_viewer.html"),
+    )
+    parser.add_argument(
+        "--video-dir",
+        type=Path,
+        default=Path("outputs/benchmarks/racket"),
+    )
+    args = parser.parse_args(argv)
+    output = args.output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cases = build_viewer_data(args.video_dir, output.parent)
     html = HTML_TEMPLATE.format(
         cases_json=json.dumps(cases, ensure_ascii=False, indent=4),
         service_labels_json=json.dumps(SERVICE_LABELS, ensure_ascii=False, indent=4),

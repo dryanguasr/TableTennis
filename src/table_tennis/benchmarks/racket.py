@@ -15,18 +15,11 @@ from typing import Iterable
 
 import numpy as np
 
-import benchmark_direct_services as direct_services
-from table_tennis_simulation import (
-    BALL_RADIUS,
-    G,
-    RacketImpactParameters,
-    TABLE_HEIGHT,
-    TABLE_WIDTH,
-    animate_racket_impact,
-    racket_normal,
-    resolve_ffmpeg_path,
-    simulate_racket_impact,
-)
+from . import direct as direct_services
+from ..constants import BALL_RADIUS, G, TABLE_HEIGHT, TABLE_WIDTH
+from ..models import RacketImpactParameters
+from ..physics import racket_normal, simulate_racket_impact
+from ..visualization import animate_racket_impact, resolve_ffmpeg_path
 
 SERVICE_TYPES = {
     # Angles are tuned for the visible racket posture at impact. The physics
@@ -202,7 +195,7 @@ def run_case(
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Benchmark racket-impact table-tennis serve simulations.")
     parser.add_argument("--repeat", type=int, default=20, help="Runs per serve variant.")
     parser.add_argument("--dt", type=float, default=0.005, help="Simulation step in seconds.")
@@ -210,12 +203,12 @@ def main() -> None:
     parser.add_argument(
         "--video-dir",
         type=Path,
-        default=Path("benchmark_racket_services"),
+        default=Path("outputs/benchmarks/racket"),
         help="Directory where one MP4 per racket-service benchmark variant is saved.",
     )
     parser.add_argument("--no-video", action="store_true", help="Run the benchmark without saving animations.")
     parser.add_argument("--ffmpeg", help="Path to the FFmpeg executable used for MP4 output.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     video_dir = None if args.no_video else args.video_dir
     ffmpeg_path = resolve_ffmpeg_path(args.ffmpeg) if video_dir is not None else None
