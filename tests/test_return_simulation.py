@@ -4,16 +4,15 @@ from dataclasses import replace
 
 import numpy as np
 
-import return_parameter_search as returns
-from generate_return_videos import _timeline_indices
-from table_tennis_simulation import (
-    RacketImpactParameters,
-    SimulationEvent,
+import table_tennis.search.returns as returns
+from table_tennis.events import identify_trajectory_moments
+from table_tennis.models import RacketImpactParameters, SimulationEvent
+from table_tennis.physics import (
     apply_racket_impact,
     apply_table_impact,
-    identify_trajectory_moments,
     simulate_racket_impact,
 )
+from table_tennis.visualization.return_videos import _timeline_indices
 
 
 class ReturnSimulationTests(unittest.TestCase):
@@ -164,7 +163,7 @@ class ReturnSimulationTests(unittest.TestCase):
             result = returns.search_return(
                 self.service_result,
                 targets,
-                config=returns.SearchConfig(
+                config=returns.ReturnSearchConfig(
                     maxiter=0,
                     popsize=1,
                     restarts=1,

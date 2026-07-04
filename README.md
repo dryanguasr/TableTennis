@@ -1,207 +1,201 @@
-# Table Tennis Physics Simulator (Work in Progress)
+# Table Tennis Physics Simulator
 
-![Table Tennis Simulation](Backhand_composite_service.gif)
+Simulador tridimensional de tenis de mesa para estudiar trayectorias, impactos
+con raqueta, servicios y devoluciones. El proyecto incluye búsqueda de
+parámetros, validadores de legalidad, benchmarks reproducibles, notebooks
+interactivos y exportación MP4.
 
-This repository explores table-tennis serve physics in Python and MATLAB. It simulates ball flight with drag, Magnus force, table friction, net interaction, spin decay, and an optional racket-impact model that converts racket motion into post-impact ball conditions.
+![Simulación de un servicio](docs/assets/backhand_composite_service.gif)
 
-## Key Features
+## Instalación
 
-- **3D ball physics:** Simulate table-tennis trajectories with gravity, drag, Magnus lift/sideswerve, spin decay, table bounces, and net collision.
-- **Direct serve benchmarks:** Run 54 tuned serve cases from direct ball initial conditions across service family, depth, and lane.
-- **Racket-impact benchmarks:** Run the matching 54 racket-impact cases. These derive racket velocity and pre-impact spin from the direct benchmark targets and render synchronized racket motion.
-- **Serve-return exchange:** Chain a legal reverse-pendulum serve with a searched forehand or backhand return at trajectory point 2, 3, or 4.
-- **Return benchmark:** Validate ten descending-phase return presets across short, two-bounce, and long backspin/topspin responses.
-- **Interactive notebooks:** Explore direct-service parameters, racket-impact parameters, benchmark presets, and embedded animations with widgets.
-- **Static video viewer:** Browse the racket benchmark MP4s in a local HTML page with filters and parameter readouts.
-- **Parameter search tool:** Use a SciPy-powered optimizer to discover serve parameters that satisfy bounce, lane, height, and depth constraints.
-
-## Files
-
-- `table_tennis_simulation.py`: Core physics, plotting, racket drawing, generic animation, and racket-impact animation.
-- `benchmark_direct_services.py`: Competitive direct-service benchmark cases.
-- `benchmark_racket_services.py`: Racket-impact benchmark cases derived from the direct benchmark.
-- `return_parameter_search.py`: Serve-return API, legality validators, contact selection, fixed-rubber racket-motion search, and service-impact inversion.
-- `benchmark_returns.py`: Fast validation and optional retuning of the ten pilot returns.
-- `generate_return_videos.py`: Generates full serve-return MP4s in `benchmark_returns/`.
-- `interactive_table_tennis.ipynb`: Direct-trajectory sliders plus benchmark preset dropdowns.
-- `racket_impact_explorer.ipynb`: Racket-impact sliders, benchmark preset dropdowns, coaching moments, and embedded animation.
-- `serve_return_search.ipynb`: Interactive service/return search with effect, depth, direction, contact point, material, tolerance, and search-budget controls.
-- `service_parameter_search.py`: Direct and racket parameter optimizer. Uses SciPy when available.
-- `service_parameter_search.ipynb`: Widget UI for setting optimization constraints and running the search with live global/polishing progress.
-- `generate_racket_benchmark_web.py`: Generates the local benchmark video viewer.
-- `racket_benchmark_viewer.html`: Static viewer for racket benchmark videos.
-
-## Requirements
-
-The core simulation needs Python with NumPy and Matplotlib. MP4 export needs FFmpeg. The parameter search script works best with SciPy:
+Requiere Python 3.10 o superior. En Windows, el instalador crea el entorno,
+instala el paquete y registra el kernel con la ruta absoluta correcta:
 
 ```powershell
-pip install numpy matplotlib scipy ipywidgets
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_environment.ps1
 ```
 
-If SciPy is not installed, `service_parameter_search.py` falls back to a slower random search.
+Después, seleccione **Python (TableTennis)** en Jupyter o VS Code. No use el
+kernel genérico `Python 3`: puede apuntar a otro intérprete donde el paquete no
+está instalado.
 
-## Quick Start
-
-Run a default simulation:
+Diagnóstico rápido:
 
 ```powershell
-python table_tennis_simulation.py
+.\.venv\Scripts\table-tennis.exe doctor
 ```
 
-Save a simulation as MP4:
+La dependencia base es NumPy. Los extras disponibles son:
+
+- `search`: SciPy para optimización global y pulido local.
+- `visualization`: Matplotlib para gráficos y animaciones.
+- `notebooks`: JupyterLab, widgets, Matplotlib y SciPy.
+- `dev`: entorno completo usado por pruebas y notebooks.
+
+FFmpeg es una dependencia externa opcional necesaria para guardar MP4. Puede
+estar en `PATH` o indicarse con `--ffmpeg`.
+
+## Uso
+
+La interfaz instalada es `table-tennis`; también puede usarse
+`python -m table_tennis`.
 
 ```powershell
-python table_tennis_simulation.py --save output.mp4
+table-tennis --help
+table-tennis simulate
+table-tennis simulate --save outputs/simulation.mp4
+
+table-tennis benchmark direct --repeat 1
+table-tennis benchmark direct --video-dir outputs/benchmarks/direct
+table-tennis benchmark racket --repeat 1 --no-video
+table-tennis benchmark returns
+
+table-tennis search service --mode direct --service pendulum --depth short --lane elbow
+table-tennis search service --mode racket --service tomahawk --depth short --lane forehand
+table-tennis search exercise --exercise falkenberg --workers 1
+
+table-tennis generate return-videos --dry-run
+table-tennis generate return-videos --profile cut_short --overwrite
+table-tennis generate benchmark-videos --suite all --dry-run
+table-tennis generate benchmark-videos --suite all --workers 2
+table-tennis generate exercise-videos --dry-run
+table-tennis generate exercise-videos --exercise falkenberg --overwrite
+table-tennis generate exercise-videos --workers 2
+table-tennis generate racket-viewer
 ```
 
-Run direct benchmark cases:
+La generación de devoluciones produce videos de hasta cinco segundos y se
+detiene antes si el centro de la bola cae por debajo del piso. Use
+`--duration` para cambiar el límite.
 
-```powershell
-python benchmark_direct_services.py
-```
+`generate benchmark-videos` administra 118 casos: 54 directos, 54 con raqueta
+y 10 devoluciones. Verifica cada MP4 con FFprobe, omite archivos válidos,
+regenera archivos corruptos, publica mediante renombrado atómico y guarda el
+resumen en `outputs/benchmarks/video_manifest.json`. Use `--overwrite` para
+forzar la regeneración y `--workers` para paralelizar en Windows.
 
-Save direct benchmark videos:
+### Ejercicios multigolpe
 
-```powershell
-python benchmark_direct_services.py --video-dir benchmark_videos
-```
+`generate exercise-videos` produce diez rallies encadenados: drive–drive,
+revés–revés, ochos, Falkenberg, pega pasa de drive y revés, dos aperturas de
+tercera bola más pega pasa, y tercera bola con cambio de ritmo y corte en
+variantes íntegramente de drive y de revés. Cada patrón contiene al menos tres
+vueltas; los dos ejercicios continuos contienen diez golpes.
 
-Run racket-impact benchmark cases and save MP4 videos:
+La generación normal carga controles de raqueta calibrados, vuelve a simular y
+validar todos los segmentos y solo entonces renderiza. Los videos muestran
+ambas raquetas, la vuelta y el golpe activo. Su duración se obtiene de la
+secuencia física completa, no de un límite fijo. Si se solicita un número de
+vueltas distinto de tres, los contactos adicionales se recalibran de forma
+determinista.
 
-```powershell
-python benchmark_racket_services.py
-```
+Cada raqueta sigue una pista Bézier continua entre stand by, preparación,
+impacto, final de ejecución y regreso al stand by. La postura neutral queda
+detrás de la línea de fondo, en el centro del cuadrante de revés, con el mango
+apuntando hacia atrás. Posición y orientación se reproducen a media velocidad
+para evitar saltos visuales sin alterar la trayectoria física. En el impacto,
+el mango apunta hacia la izquierda relativa del jugador para el drive y hacia
+su derecha para el revés.
 
-Validate the ten serve-return presets:
+Opciones principales:
 
-```powershell
-python benchmark_returns.py
-```
+- `--exercise`, repetible, selecciona ejercicios.
+- `--cycles`, con valor y mínimo de tres, amplía el patrón.
+- `--workers`, `--overwrite`, `--limit`, `--fps` y `--ffmpeg` controlan el lote.
+- `--dry-run` enumera trabajos sin calibrar ni renderizar.
 
-Generate the ten complete serve-return videos:
+Los MP4 y el manifiesto se guardan en `outputs/exercises/`. Los archivos
+válidos se omiten mediante FFprobe y cada render se publica atómicamente.
+`search exercise` vuelve a calibrar uno o varios ejercicios y exporta los
+parámetros candidatos a `outputs/search/exercises/candidates.json`; no
+reemplaza automáticamente los presets versionados.
 
-```powershell
-python generate_return_videos.py
-```
-
-Videos are written to the ignored `benchmark_returns/` folder. Render a single smoke-test case or select a profile with:
-
-```powershell
-python generate_return_videos.py --limit 1
-python generate_return_videos.py --profile cut_short
-```
-
-Each MP4 lasts at most 5 seconds and stops earlier only when the ball center falls below floor level (`Z < 0`). Change the cap with `--duration`:
-
-```powershell
-python generate_return_videos.py --duration 8 --overwrite
-```
-
-If FFmpeg is not on `PATH`, pass it explicitly:
-
-```powershell
-python benchmark_racket_services.py --ffmpeg C:\path\to\ffmpeg.exe
-```
-
-## Web Viewer
-
-Generate or refresh the racket benchmark viewer:
-
-```powershell
-python generate_racket_benchmark_web.py
-```
-
-Then open:
+## Organización
 
 ```text
-racket_benchmark_viewer.html
+src/table_tennis/
+  physics.py           motor físico sin dependencias de interfaz
+  models.py            condiciones, impactos, resultados y eventos
+  events.py            consultas y momentos 1-6
+  exchange.py          contrato del intercambio servicio-recepción
+  rally.py             rallies multigolpe bidireccionales
+  validation.py        legalidad y tolerancias
+  search/              optimización de servicios, devoluciones y ejercicios
+  presets/             datos reproducibles
+  benchmarks/          validación y medición
+  visualization/       dibujo, animación, videos y visor
+notebooks/             exploradores interactivos activos
+tests/                 pruebas unitarias y de arquitectura
+docs/assets/           recursos de documentación
+archive/               material histórico no mantenido
+outputs/               videos, visores y resultados regenerables
 ```
 
-The viewer lists the 54 racket benchmark videos with filters for service type, depth, and lane. It also shows the racket angle, racket velocity, incoming ball velocity, spin, friction, restitution, and contact position used by each case.
+`outputs/` está ignorado por Git. Las ubicaciones predeterminadas son:
 
-## Parameter Search
+- `outputs/benchmarks/direct/`
+- `outputs/benchmarks/racket/`
+- `outputs/benchmarks/returns/`
+- `outputs/exercises/`
+- `outputs/search/exercises/`
+- `outputs/notebooks/<notebook>/`
+- `outputs/viewers/racket_benchmark_viewer.html`
 
-Search direct initial conditions:
+## API Python
 
-```powershell
-python service_parameter_search.py --mode direct --service pendulum --depth short --lane elbow
+```python
+from table_tennis import InitialConditions, simulate, simulate_exercise
+from table_tennis.events import identify_trajectory_moments
+from table_tennis.presets.exercises import build_exercise
+
+result = simulate(InitialConditions())
+moments = identify_trajectory_moments(result)
+exercise = simulate_exercise(build_exercise("figure_eight", cycles=3))
+assert exercise.passed
 ```
 
-Search racket-impact parameters:
-
-```powershell
-python service_parameter_search.py --mode racket --service tomahawk --depth short --lane forehand
-```
-
-Useful options:
-
-```powershell
-python service_parameter_search.py `
-  --mode direct `
-  --service reverse_pendulum `
-  --depth two_bounce `
-  --lane backhand `
-  --server-x 520 `
-  --opponent-x 1850 `
-  --opponent-y 427 `
-  --max-height 240 `
-  --maxiter 120 `
-  --popsize 12 `
-  --workers 4 `
-  --output search_result.json
-```
-
-Open `service_parameter_search.ipynb` for a slider-based interface to the same optimizer. You can set server-side bounce, receiver-side bounce, lane target, maximum height after the net, search budget, and whether the serve should prefer or avoid a second bounce on the receiver side. After pressing **Buscar parámetros**, the notebook disables the button and displays generation-by-generation progress, the best cost, and the local-polishing phase.
-
-## Serve-Return Search
-
-The pilot starts with a legal short reverse-pendulum backspin serve to the elbow. Return targets support:
-
-- numeric post-impact spin on global X/Y/Z axes;
-- short, two-bounce, or long depth with an editable landing coordinate;
-- forehand, elbow, or backhand direction relative to the receiving player;
-- forehand or backhand stroke;
-- contact during rising point 2, apex point 3, or descending point 4;
-- fixed rubber friction/restitution and adjustable landing/spin tolerances.
-
-Ball-table and ball-racket contacts use impulse-based restitution with a Coulomb friction cap. Tangential impulses can no longer exceed the friction supported by the normal impact. The return validator also rejects:
-
-- cut strokes whose racket moves upward or away from the opponent;
-- trajectories with excessive height or net clearance;
-- balls that reverse direction after the first bounce;
-- short/two-bounce shots whose second bounce moves back toward the net.
-
-The stored cut presets retain some lateral spin from the reverse-pendulum serve and target `(-15, 35, 10)` rps rather than forcing an artificial pure backspin vector.
-
-The original 54 racket-service presets explicitly retain the legacy contact model so they remain numerically identical to their matching direct-service initial conditions. New searches and all serve-return presets use the Coulomb model by default.
-
-Run the notebook for interactive searches:
-
-```text
-serve_return_search.ipynb
-```
-
-Retune the five return profiles instead of loading the stored presets:
-
-```powershell
-python benchmark_returns.py --retune --workers 4
-```
+Los contratos del intercambio están en `table_tennis.exchange`; los
+validadores en `table_tennis.validation`; y las búsquedas en
+`table_tennis.search.service` y `table_tennis.search.returns`.
 
 ## Notebooks
 
-- Open `interactive_table_tennis.ipynb` to experiment with direct position, velocity, and spin. The three dropdowns at the top load benchmark presets.
-- Open `racket_impact_explorer.ipynb` to experiment with incoming ball, rubber, racket angle, racket velocity, and benchmark racket presets. It identifies coaching moments 1-6, renders the synchronized pre-impact animation, and includes a block for the ten validated return presets.
-- Open `serve_return_search.ipynb` to search and visualize the complete service-reception exchange.
+- `01_direct_trajectory_explorer.ipynb`: trayectoria directa y presets.
+- `02_racket_impact_explorer.ipynb`: impacto, gesto y momentos de contacto.
+- `03_service_parameter_search.ipynb`: búsqueda con progreso visible.
+- `04_serve_return_search.ipynb`: servicio y devolución configurables.
 
-## Contributions and Feedback
+Ejecute primero el instalador y seleccione el kernel **Python
+(TableTennis)**. Cada notebook comprueba el intérprete antes de importar el
+paquete y explica cómo reparar una selección incorrecta. Los cuatro incluyen
+una acción explícita para guardar y mostrar un MP4 bajo su propia carpeta en
+`outputs/notebooks/`.
 
-Feedback, issues, and pull requests are welcome. This is an exploratory physics project, so empirical tuning notes, references to real service mechanics, and validation cases are especially useful.
+## Migración desde los scripts antiguos
 
-## About the Author
+| Antes | Ahora |
+|---|---|
+| `python table_tennis_simulation.py` | `table-tennis simulate` |
+| `python benchmark_direct_services.py` | `table-tennis benchmark direct` |
+| `python benchmark_racket_services.py` | `table-tennis benchmark racket` |
+| `python benchmark_returns.py` | `table-tennis benchmark returns` |
+| `python service_parameter_search.py` | `table-tennis search service` |
+| `python generate_return_videos.py` | `table-tennis generate return-videos` |
+| `python generate_racket_benchmark_web.py` | `table-tennis generate racket-viewer` |
 
-Hi, I'm David Yanguas, a passionate table tennis player and physics enthusiast. This project combines my love for both fields and serves as an avenue to share the wonders of physics through the lens of a beloved sport. Connect with me on [LinkedIn](https://www.linkedin.com/in/davidyanguasrojas/) to stay updated on my journey and other projects.
+La migración es intencionalmente inmediata: los módulos y scripts antiguos de
+la raíz ya no existen.
 
----
+## Verificación
 
-**Disclaimer:** This project is intended for educational and entertainment purposes. The simulations are approximations and do not capture every complexity of real table-tennis play.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe scripts\validate_notebooks.py
+.\.venv\Scripts\table-tennis.exe generate benchmark-videos --suite all --dry-run
+.\.venv\Scripts\table-tennis.exe generate exercise-videos --dry-run
+.\.venv\Scripts\table-tennis.exe benchmark returns
+```
+
+El banco piloto debe mantener diez devoluciones legales y los benchmarks de
+servicio deben conservar sus márgenes calibrados.

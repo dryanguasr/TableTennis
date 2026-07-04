@@ -1,5 +1,9 @@
-benchmark_videos/
-benchmark_racket_services/
-benchmark_returns/
+outputs/
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
 __pycache__/
 *.py[cod]

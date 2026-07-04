@@ -14,19 +14,14 @@ from typing import Callable, Iterable
 
 import numpy as np
 
-import benchmark_direct_services as benchmark_direct
-import benchmark_racket_services as benchmark_racket
-from table_tennis_simulation import (
-    BALL_RADIUS,
-    InitialConditions,
-    RacketImpactParameters,
-    TABLE_HEIGHT,
-    TABLE_LENGTH,
-    TABLE_WIDTH,
+from ..constants import BALL_RADIUS, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..models import InitialConditions, RacketImpactParameters, SimulationResult
+from ..physics import (
     apply_racket_impact,
     simulate,
     simulate_racket_impact,
 )
+from ..presets import services as service_presets
 
 
 try:
@@ -121,7 +116,7 @@ class RacketSearchSpace:
 
 
 @dataclass
-class SearchConfig:
+class ServiceSearchConfig:
     targets: ServeTargets = field(default_factory=ServeTargets)
     weights: SearchWeights = field(default_factory=SearchWeights)
     space: SearchSpace = field(default_factory=SearchSpace)
@@ -159,18 +154,28 @@ class TrajectoryMetrics:
 
 
 @dataclass
-class SearchResult:
+class ServiceSearchResult:
     success: bool
     cost: float
     optimizer: str
     parameters: dict[str, float | tuple[float, float, float]]
     metrics: TrajectoryMetrics
+    mode: str
+    trajectory: SimulationResult = field(repr=False)
+    initial_conditions: InitialConditions | None = None
+    racket_parameters: RacketImpactParameters | None = None
     message: str = ""
 
     def to_json_dict(self) -> dict[str, object]:
-        data = asdict(self)
-        data["metrics"] = asdict(self.metrics)
-        return data
+        return {
+            "success": self.success,
+            "cost": self.cost,
+            "optimizer": self.optimizer,
+            "parameters": self.parameters,
+            "metrics": asdict(self.metrics),
+            "mode": self.mode,
+            "message": self.message,
+        }
 
 
 @dataclass(frozen=True)
@@ -349,7 +354,7 @@ def parameters_to_racket_vector(params: RacketImpactParameters) -> np.ndarray:
 
 @dataclass(frozen=True)
 class _DirectObjective:
-    config: SearchConfig
+    config: ServiceSearchConfig
 
     def __call__(self, vector: np.ndarray) -> float:
         ic = direct_vector_to_initial_conditions(vector)
@@ -520,10 +525,10 @@ def _run_optimizer(
 
 
 def search_direct_parameters(
-    config: SearchConfig,
+    config: ServiceSearchConfig,
     initial_guess: InitialConditions | np.ndarray | None = None,
     progress_callback: Callable[[SearchProgress], None] | None = None,
-) -> SearchResult:
+) -> ServiceSearchResult:
     bounds = config.space.bounds()
     guess_vector = None
     if isinstance(initial_guess, InitialConditions):
@@ -547,10 +552,13 @@ def search_direct_parameters(
     ic = direct_vector_to_initial_conditions(vector)
     result = simulate(ic, dt=config.dt, t_max=config.t_max)
     metrics = trajectory_metrics(result)
-    return SearchResult(
+    return ServiceSearchResult(
         success=metrics.server_bounce is not None and metrics.opponent_bounce is not None,
         cost=cost,
         optimizer=optimizer,
+        mode="direct",
+        trajectory=result,
+        initial_conditions=ic,
         message=message,
         parameters={
             "position": tuple(float(x) for x in ic.pos),
@@ -566,7 +574,7 @@ def search_racket_parameters(
     config: RacketSearchConfig,
     initial_guess: RacketImpactParameters | np.ndarray | None = None,
     progress_callback: Callable[[SearchProgress], None] | None = None,
-) -> SearchResult:
+) -> ServiceSearchResult:
     bounds = config.space.bounds()
     guess_vector = None
     if isinstance(initial_guess, RacketImpactParameters):
@@ -591,10 +599,13 @@ def search_racket_parameters(
     result = simulate_racket_impact(params, dt=config.dt, t_max=config.t_max)
     post_ic = apply_racket_impact(params)
     metrics = trajectory_metrics(result)
-    return SearchResult(
+    return ServiceSearchResult(
         success=metrics.server_bounce is not None and metrics.opponent_bounce is not None,
         cost=cost,
         optimizer=optimizer,
+        mode="racket",
+        trajectory=result,
+        racket_parameters=params,
         message=message,
         parameters={
             "ball_position": tuple(float(x) for x in params.ball_position),
@@ -612,29 +623,29 @@ def search_racket_parameters(
 
 
 def benchmark_initial_guess(service: str, depth: str, lane: str) -> InitialConditions:
-    for case in benchmark_direct.build_cases():
+    for case in service_presets.build_direct_cases():
         if (case.service, case.depth, case.lane) == (service, depth, lane):
             return case.initial_conditions
     raise ValueError(f"No direct benchmark case for {(service, depth, lane)}")
 
 
 def benchmark_racket_initial_guess(service: str, depth: str, lane: str) -> RacketImpactParameters:
-    for case in benchmark_racket.build_cases():
+    for case in service_presets.build_racket_cases():
         if (case.service, case.depth, case.lane) == (service, depth, lane):
             return case.params
     raise ValueError(f"No racket benchmark case for {(service, depth, lane)}")
 
 
 def target_from_benchmark(depth: str, lane: str, server_x: float | None = None) -> ServeTargets:
-    if depth not in benchmark_direct.DEPTHS:
+    if depth not in service_presets.DIRECT_DEPTHS:
         raise ValueError(f"Unknown depth: {depth}")
-    if lane not in benchmark_direct.LANES:
+    if lane not in service_presets.DIRECT_LANES:
         raise ValueError(f"Unknown lane: {lane}")
     return ServeTargets(
         server_bounce_x=server_x if server_x is not None else {"short": 440.0, "two_bounce": 530.0, "long": 580.0}[depth],
-        server_bounce_y=benchmark_direct.LANES[lane]["y"],
-        opponent_bounce_x=benchmark_direct.DEPTHS[depth]["target_x"],
-        opponent_bounce_y=benchmark_direct.LANES[lane]["y"],
+        server_bounce_y=service_presets.DIRECT_LANES[lane]["y"],
+        opponent_bounce_x=service_presets.DIRECT_DEPTHS[depth]["target_x"],
+        opponent_bounce_y=service_presets.DIRECT_LANES[lane]["y"],
         max_height_after_net={"short": 220.0, "two_bounce": 235.0, "long": 250.0}[depth],
         min_height_after_net=120.0,
         prefer_second_opponent_bounce=depth in {"short", "two_bounce"},
@@ -650,12 +661,12 @@ def _json_default(value):
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Search serve parameters under trajectory constraints.")
     parser.add_argument("--mode", choices=["direct", "racket"], default="direct")
-    parser.add_argument("--service", default="pendulum", choices=list(benchmark_direct.SERVICE_TYPES))
-    parser.add_argument("--depth", default="two_bounce", choices=list(benchmark_direct.DEPTHS))
-    parser.add_argument("--lane", default="elbow", choices=list(benchmark_direct.LANES))
+    parser.add_argument("--service", default="pendulum", choices=list(service_presets.DIRECT_SERVICE_TYPES))
+    parser.add_argument("--depth", default="two_bounce", choices=list(service_presets.DIRECT_DEPTHS))
+    parser.add_argument("--lane", default="elbow", choices=list(service_presets.DIRECT_LANES))
     parser.add_argument("--server-x", type=float, help="Target first bounce x on server side.")
     parser.add_argument("--opponent-x", type=float, help="Target first bounce x on receiver side.")
     parser.add_argument("--opponent-y", type=float, help="Target first bounce y on receiver side.")
@@ -668,7 +679,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--no-polish", action="store_true")
     parser.add_argument("--output", type=Path, help="Optional JSON output path.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     targets = target_from_benchmark(args.depth, args.lane, args.server_x)
     if args.opponent_x is not None:
@@ -679,7 +690,7 @@ def main() -> None:
         targets = ServeTargets(**{**asdict(targets), "max_height_after_net": args.max_height})
 
     if args.mode == "direct":
-        config = SearchConfig(
+        config = ServiceSearchConfig(
             targets=targets,
             dt=args.dt,
             t_max=args.t_max,

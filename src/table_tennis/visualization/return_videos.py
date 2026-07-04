@@ -7,33 +7,27 @@ from pathlib import Path
 
 import numpy as np
 
-from benchmark_returns import PROFILE_TARGETS
-from return_parameter_search import (
-    PILOT_SERVICE_PARAMS,
-    StrokeTargets,
+from ..constants import DT, PITCH, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH, YAW
+from ..exchange import ServiceTargets, StrokeTargets
+from ..physics import simulate_racket_impact
+from ..presets.returns import PILOT_SERVICE_PARAMS, PROFILE_TARGETS
+from ..search.returns import (
     build_return_preset,
-    validate_return,
-    validate_service,
-    ServiceTargets,
 )
-from table_tennis_simulation import (
-    DT,
-    PITCH,
-    TABLE_HEIGHT,
-    TABLE_LENGTH,
-    TABLE_WIDTH,
-    YAW,
-    _draw_ball,
-    draw_racket,
-    draw_table,
+from ..validation import validate_return, validate_service
+from .animation import (
     pre_impact_ball_path,
     racket_gesture_path,
     resolve_ffmpeg_path,
-    simulate_racket_impact,
+)
+from .plotting import (
+    draw_ball,
+    draw_racket,
+    draw_table,
 )
 
 
-DEFAULT_VIDEO_DIR = Path("benchmark_returns")
+DEFAULT_VIDEO_DIR = Path("outputs/benchmarks/returns")
 
 
 def _timeline_indices(
@@ -87,38 +81,81 @@ def _set_axes(ax, title: str) -> None:
 
 
 def save_exchange_video(
-    profile: str,
+    profile: str | None,
     stroke_side: str,
     output_path: Path,
-    ffmpeg_path: str,
+    ffmpeg_path: str | None = None,
     fps: int = 30,
     max_duration: float = 5.0,
+    *,
+    service_params=None,
+    service_result=None,
+    contact=None,
+    contact_index: int | None = None,
+    return_params=None,
+    service_targets: ServiceTargets | None = None,
+    return_targets: StrokeTargets | None = None,
+    video_title: str | None = None,
 ) -> None:
+    """Render a validated preset or custom serve-return exchange."""
+
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import animation
 
-    depth, spin = PROFILE_TARGETS[profile]
-    service_result = simulate_racket_impact(PILOT_SERVICE_PARAMS, t_max=3.0)
-    contact, contact_index, return_params = build_return_preset(profile, stroke_side, service_result)
+    if profile is not None:
+        depth, spin = PROFILE_TARGETS[profile]
+        service_params = PILOT_SERVICE_PARAMS
+        service_result = simulate_racket_impact(service_params, t_max=3.0)
+        contact, contact_index, return_params = build_return_preset(
+            profile,
+            stroke_side,
+            service_result,
+        )
+        service_targets = ServiceTargets()
+        return_targets = StrokeTargets(
+            depth=depth,
+            direction="elbow",
+            spin_rps=spin,
+            stroke_side=stroke_side,
+        )
+    required = {
+        "service_params": service_params,
+        "service_result": service_result,
+        "contact": contact,
+        "contact_index": contact_index,
+        "return_params": return_params,
+        "service_targets": service_targets,
+        "return_targets": return_targets,
+    }
+    missing = [name for name, value in required.items() if value is None]
+    if missing:
+        raise ValueError(
+            "Custom exchange video is missing: " + ", ".join(missing)
+        )
+
     return_result = simulate_racket_impact(return_params, t_max=max_duration)
-    targets = StrokeTargets(
-        depth=depth,
-        direction="elbow",
-        spin_rps=spin,
-        stroke_side=stroke_side,
+    service_report = validate_service(
+        service_params,
+        service_result,
+        service_targets,
     )
-    service_report = validate_service(PILOT_SERVICE_PARAMS, service_result, ServiceTargets())
-    return_report = validate_return(return_params, return_result, targets)
+    return_report = validate_return(return_params, return_result, return_targets)
     if not service_report.passed or not return_report.passed:
         raise RuntimeError(
             f"Refusing to render an invalid exchange: service={service_report.violations}, "
             f"return={return_report.violations}"
         )
 
-    plt.rcParams["animation.ffmpeg_path"] = ffmpeg_path
+    resolved_ffmpeg = resolve_ffmpeg_path(ffmpeg_path)
+    if resolved_ffmpeg is None:
+        raise RuntimeError(
+            "MP4 output requires FFmpeg. Install FFmpeg and add it to PATH, "
+            "or pass its executable path."
+        )
+    plt.rcParams["animation.ffmpeg_path"] = resolved_ffmpeg
     pre_frames, service_indices, return_indices = _timeline_indices(
         service_result,
         contact_index,
@@ -128,16 +165,16 @@ def save_exchange_video(
     )
 
     service_racket_path = racket_gesture_path(
-        PILOT_SERVICE_PARAMS.ball_position,
-        PILOT_SERVICE_PARAMS.racket_velocity,
+        service_params.ball_position,
+        service_params.racket_velocity,
     )
     return_racket_path = racket_gesture_path(
         return_params.ball_position,
         return_params.racket_velocity,
     )
     incoming_service_ball = pre_impact_ball_path(
-        PILOT_SERVICE_PARAMS.ball_position,
-        PILOT_SERVICE_PARAMS.ball_velocity,
+        service_params.ball_position,
+        service_params.ball_velocity,
         samples=pre_frames,
     )
     total_frames = pre_frames + len(service_indices) + len(return_indices)
@@ -170,7 +207,11 @@ def save_exchange_video(
         if frame < pre_frames:
             ball_center = incoming_service_ball[frame]
             racket_index = int(frame / max(1, pre_frames - 1) * service_contact_racket)
-            draw_racket(ax, service_racket_path[racket_index], PILOT_SERVICE_PARAMS.racket_angle)
+            draw_racket(
+                ax,
+                service_racket_path[racket_index],
+                service_params.racket_angle,
+            )
             title = "Preparación del servicio pendular invertido"
         elif frame < pre_frames + len(service_indices):
             local = frame - pre_frames
@@ -188,7 +229,11 @@ def save_exchange_video(
                 service_contact_racket + 1 + round(service_progress * (len(service_racket_path) - service_contact_racket - 2)),
                 len(service_racket_path) - 1,
             )
-            draw_racket(ax, service_racket_path[racket_index], PILOT_SERVICE_PARAMS.racket_angle)
+            draw_racket(
+                ax,
+                service_racket_path[racket_index],
+                service_params.racket_angle,
+            )
             if local >= max(0, len(service_indices) - return_contact_racket - 1):
                 approach = local - max(0, len(service_indices) - return_contact_racket - 1)
                 draw_racket(
@@ -221,9 +266,13 @@ def save_exchange_video(
                 len(return_racket_path) - 1,
             )
             draw_racket(ax, return_racket_path[racket_index], return_params.racket_angle)
-            title = f"{profile} · {stroke_side}"
+            title = video_title or (
+                f"{profile} · {stroke_side}"
+                if profile is not None
+                else f"Servicio y recepción · {stroke_side}"
+            )
 
-        _draw_ball(ax, ball_center)
+        draw_ball(ax, ball_center)
         _set_axes(ax, title)
 
     movie = animation.FuncAnimation(fig, update, frames=total_frames, interval=1000 / fps)
@@ -241,7 +290,7 @@ def iter_cases(selected_profiles: list[str] | None = None):
             yield profile, stroke_side
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--video-dir", type=Path, default=DEFAULT_VIDEO_DIR)
     parser.add_argument("--ffmpeg", help="Path or executable name for FFmpeg.")
@@ -256,7 +305,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="Render only the first N selected cases.")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Validate cases and print paths without rendering.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     ffmpeg = resolve_ffmpeg_path(args.ffmpeg)
     if not args.dry_run and ffmpeg is None:

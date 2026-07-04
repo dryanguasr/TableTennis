@@ -5,29 +5,24 @@ from __future__ import annotations
 import argparse
 import json
 
-from return_parameter_search import (
-    PILOT_SERVICE_PARAMS,
-    RETURN_PRESET_VECTORS,
+from ..exchange import (
     ContactSelection,
     RubberProperties,
-    SearchConfig,
     ServiceTargets,
     StrokeTargets,
+)
+from ..physics import simulate_racket_impact
+from ..presets.returns import (
+    PILOT_SERVICE_PARAMS,
+    PROFILE_TARGETS,
+    RETURN_PRESET_VECTORS,
+)
+from ..search.returns import (
+    ReturnSearchConfig,
     build_return_preset,
     search_return,
-    validate_return,
-    validate_service,
 )
-from table_tennis_simulation import simulate_racket_impact
-
-
-PROFILE_TARGETS = {
-    "cut_short": ("short", (-15.0, 35.0, 10.0)),
-    "cut_two_bounce": ("two_bounce", (-15.0, 35.0, 10.0)),
-    "cut_long": ("long", (-15.0, 35.0, 10.0)),
-    "top_two_bounce": ("two_bounce", (0.0, -45.0, 0.0)),
-    "top_long": ("long", (0.0, -45.0, 0.0)),
-}
+from ..validation import validate_return, validate_service
 
 
 def build_cases():
@@ -85,7 +80,7 @@ def retune(workers: int) -> dict[str, object]:
             targets,
             contact=ContactSelection(moment=4),
             rubber=RubberProperties(),
-            config=SearchConfig(workers=workers),
+                config=ReturnSearchConfig(workers=workers),
             use_validated_preset=False,
         )
         output[profile] = {
@@ -99,11 +94,11 @@ def retune(workers: int) -> dict[str, object]:
     return output
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--retune", action="store_true", help="Run exhaustive searches instead of validating presets.")
     parser.add_argument("--workers", type=int, default=1)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.retune:
         print(json.dumps(retune(args.workers), indent=2))
         return
