@@ -29,7 +29,8 @@ MAX_APPROACH_SECONDS = 0.45
 MAX_RECOVERY_SECONDS = 0.45
 PREPARATION_LEAD_SECONDS = 0.18
 FOLLOW_THROUGH_SECONDS = 0.18
-PLAYBACK_SLOWDOWN = 2.0
+PLAYBACK_SLOWDOWN = 3.0
+INTER_CONTACT_MOTION_FRACTION = 0.35
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,23 @@ def visual_racket_angle(
     desired_y = left_y if wing == "forehand" else -left_y
     desired = np.array([0.0, desired_y, 0.0])
     normal = racket_normal((0.0, angle_y, angle_z))
+
+    # The handle lies in the racket plane. An extremely lateral physical face
+    # normal can make the intended right-handed handle direction impossible.
+    # Limit only the rendered normal when needed; contact physics continues to
+    # use the original angles stored in the segment parameters.
+    max_lateral_normal = np.sqrt(1.0 - 0.90**2)
+    lateral = float(np.dot(normal, desired))
+    if abs(lateral) > max_lateral_normal:
+        perpendicular = normal - lateral * desired
+        perpendicular /= max(float(np.linalg.norm(perpendicular)), 1e-9)
+        normal = (
+            np.sign(lateral) * max_lateral_normal * desired
+            + np.sqrt(1.0 - max_lateral_normal**2) * perpendicular
+        )
+        angle_y = float(np.rad2deg(np.arcsin(-normal[2])))
+        angle_z = float(np.rad2deg(np.arctan2(normal[1], normal[0])))
+
     target = desired - float(np.dot(desired, normal)) * normal
     target_norm = float(np.linalg.norm(target))
     if target_norm < 1e-9:
@@ -203,7 +221,8 @@ def _stroke_motion_track(
         (
             contact_time - previous_time
             if player_position == 0
-            else 0.48 * (contact_time - previous_time)
+            else INTER_CONTACT_MOTION_FRACTION
+            * (contact_time - previous_time)
         ),
     )
     recovery = min(
@@ -211,11 +230,14 @@ def _stroke_motion_track(
         (
             next_time - contact_time
             if player_position + 1 == len(player_contacts)
-            else 0.48 * (next_time - contact_time)
+            else INTER_CONTACT_MOTION_FRACTION
+            * (next_time - contact_time)
         ),
     )
-    approach = max(0.20, approach)
-    recovery = max(0.20, recovery)
+    if player_position == 0:
+        approach = max(0.20, approach)
+    if player_position + 1 == len(player_contacts):
+        recovery = max(0.20, recovery)
     preparation_lead = min(
         PREPARATION_LEAD_SECONDS,
         approach * 0.48,

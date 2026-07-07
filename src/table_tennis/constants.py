@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 
-# Units follow the original MATLAB model: millimetres, grams, seconds, and mN.
+# Units are millimetres, grams, seconds, and g·mm/s².
 BALL_MASS = 2.7
-BALL_RADIUS = 20.25
+BALL_RADIUS = 20.0
 BALL_ROT_INERTIA = 2 / 3 * BALL_MASS * BALL_RADIUS**2
 
-TABLE_RESTITUTION = 0.89
 NET_RESTITUTION = 0.5
 TABLE_FRICTION = 0.25
 
-DRAG = 2.7
-ROT_DRAG = 350.0
-MAGNUS = 0.01
-G = 9800.0
+# ACE baseline from Dürr et al., Nature 652, 886–891 (2026).
+# Air density is converted from 1.204 kg/m³ to g/mm³.
+AIR_DENSITY = 1.204e-6
+DRAG_COEFFICIENT = 0.55
+MAGNUS_SCALE = 0.1
+MAGNUS_OFFSET = 0.001
+G = 9810.0
 
 TABLE_LENGTH = 2740.0
 TABLE_WIDTH = 1525.0

@@ -10,9 +10,9 @@ from .benchmarks import direct, racket, returns, videos
 from .doctor import run_doctor
 from .models import InitialConditions
 from .physics import simulate
-from .search import exercises, service
+from .search import exercises, retune_all, service
 from .visualization import animate_simulation
-from .visualization import exercise_videos, return_videos, viewer
+from .visualization import exercise_viewer, exercise_videos, return_videos, viewer
 
 
 COMMANDS = """\
@@ -24,9 +24,11 @@ Commands:
   benchmark returns
   search service
   search exercise
+  search retune-all
   generate return-videos
   generate benchmark-videos
   generate exercise-videos
+  generate exercise-viewer
   generate racket-viewer
 
 Run `table-tennis <command> --help` for command-specific options.
@@ -102,6 +104,7 @@ def main(argv: list[str] | None = None) -> None:
             {
                 "service": service.main,
                 "exercise": exercises.main,
+                "retune-all": retune_all.main,
             },
         )
     elif command == "generate":
@@ -112,6 +115,7 @@ def main(argv: list[str] | None = None) -> None:
                 "return-videos": return_videos.main,
                 "benchmark-videos": videos.main,
                 "exercise-videos": exercise_videos.main,
+                "exercise-viewer": exercise_viewer.main,
                 "racket-viewer": viewer.main,
             },
         )

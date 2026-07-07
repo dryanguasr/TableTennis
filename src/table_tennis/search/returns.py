@@ -43,7 +43,12 @@ from ..physics import (
     apply_racket_impact,
     simulate_racket_impact,
 )
-from ..presets.returns import PILOT_SERVICE_PARAMS, RETURN_PRESET_VECTORS
+from ..presets.returns import (
+    PILOT_SERVICE_PARAMS,
+    PROFILE_TARGETS,
+    PROFILE_TARGET_X,
+    RETURN_PRESET_VECTORS,
+)
 from ..validation import validate_return, validate_service
 
 try:
@@ -555,11 +560,56 @@ class _ServiceObjective:
         params = _service_params_from_vector(self.targets, self.rubber, vector)
         result = simulate_racket_impact(params, dt=self.dt, t_max=self.t_max)
         report = validate_service(params, result, self.targets)
-        return _objective_cost(
+        cost = _objective_cost(
             report,
             self.targets.bounce_tolerance_mm,
             self.targets.spin_tolerance_rps,
         )
+        server_events = table_bounces(result, "server")
+        receiver_events = table_bounces(result, "receiver")
+        if server_events and receiver_events:
+            start = server_events[0].index
+            receiver_index = receiver_events[0].index
+            flight_height = float(
+                np.max(result.x[2, start : receiver_index + 1])
+                - NET_CLEARANCE_LEVEL
+            )
+            later = [
+                event.index
+                for event in table_bounces(result)
+                if event.index > receiver_index
+            ]
+            rebound_end = later[0] if later else result.x.shape[1] - 1
+            rebound_height = float(
+                np.max(result.x[2, receiver_index : rebound_end + 1])
+                - NET_CLEARANCE_LEVEL
+            )
+            if self.targets.max_height_above_net_mm is not None:
+                cost += (
+                    max(
+                        0.0,
+                        flight_height
+                        - self.targets.max_height_above_net_mm
+                        + 5.0,
+                    )
+                    / 5.0
+                ) ** 2 * 500.0
+            if self.targets.max_rebound_height_above_net_mm is not None:
+                cost += (
+                    max(
+                        0.0,
+                        rebound_height
+                        - self.targets.max_rebound_height_above_net_mm
+                        + 5.0,
+                    )
+                    / 5.0
+                ) ** 2 * 500.0
+        elif (
+            self.targets.max_height_above_net_mm is not None
+            or self.targets.max_rebound_height_above_net_mm is not None
+        ):
+            cost += 100000.0
+        return float(cost)
 
 
 def _fallback_differential_evolution(

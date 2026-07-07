@@ -8,7 +8,18 @@ from table_tennis.presets.exercises import (
     build_exercise,
     build_exercises,
 )
-from table_tennis.rally import simulate_exercise
+from table_tennis.rally import (
+    MAX_FLIGHT_HEIGHT_ABOVE_NET_MM,
+    MAX_REBOUND_HEIGHT_ABOVE_NET_MM,
+    simulate_exercise,
+    stroke_spin_tolerance_rps,
+)
+from table_tennis.rally import (
+    ExerciseStroke,
+    _arc_contact_index,
+    stroke_target_point,
+    theoretical_contact,
+)
 from table_tennis.search.exercises import ExerciseSearchJob
 from table_tennis.physics import rotation_matrix_xyz
 from table_tennis.visualization.animation import racket_gesture_path
@@ -93,10 +104,94 @@ class ExerciseSimulationTests(unittest.TestCase):
                 segment.validation.bounce_error_mm,
                 segment.stroke.bounce_tolerance_mm,
             )
-        self.assertLessEqual(
-            max(segment.validation.spin_error_rps for segment in segments),
-            35.0,
+            self.assertLessEqual(
+                segment.validation.spin_error_rps,
+                stroke_spin_tolerance_rps(segment.stroke),
+            )
+            self.assertLessEqual(
+                segment.validation.max_height_above_net_mm,
+                MAX_FLIGHT_HEIGHT_ABOVE_NET_MM,
+            )
+            self.assertLessEqual(
+                segment.validation.rebound_height_above_net_mm,
+                MAX_REBOUND_HEIGHT_ABOVE_NET_MM,
+            )
+
+    def test_contact_phase_and_depth_follow_coaching_rules(self):
+        for name, result in self.results.items():
+            for index, segment in enumerate(result.segments):
+                stroke = segment.stroke
+                if stroke.kind == "serve":
+                    continue
+                self.assertEqual(
+                    (stroke.contact_moment, stroke.contact_fraction),
+                    theoretical_contact(stroke),
+                    msg=f"{name}/{stroke.label}",
+                )
+                if index > 0:
+                    previous = result.segments[index - 1]
+                    self.assertEqual(
+                        previous.stop_index,
+                        _arc_contact_index(
+                            previous.result,
+                            stroke.hitter,
+                            stroke.contact_moment,
+                            stroke.contact_fraction,
+                        ),
+                        msg=f"{name}/{stroke.label}",
+                    )
+                incoming_vertical_speed = segment.params.ball_velocity[2]
+                if stroke.contact_moment == 2:
+                    self.assertGreater(
+                        incoming_vertical_speed,
+                        0.0,
+                        msg=f"{name}/{stroke.label}",
+                    )
+                elif stroke.contact_moment == 4:
+                    self.assertLess(
+                        incoming_vertical_speed,
+                        0.0,
+                        msg=f"{name}/{stroke.label}",
+                    )
+                else:
+                    self.assertLess(abs(incoming_vertical_speed), 100.0)
+                if stroke.depth == "short":
+                    self.assertLessEqual(
+                        segment.validation.depth_from_net_mm,
+                        450.0,
+                    )
+                else:
+                    self.assertGreaterEqual(
+                        segment.validation.depth_from_net_mm,
+                        800.0,
+                    )
+
+    def test_short_push_rule_targets_point_two_near_the_net(self):
+        stroke = ExerciseStroke(
+            hitter="far",
+            wing="forehand",
+            kind="push",
+            target_wing="forehand",
+            depth="short",
         )
+        self.assertEqual(theoretical_contact(stroke), (2, 0.45))
+        target_x, _ = stroke_target_point(stroke)
+        self.assertAlmostEqual(abs(target_x - 2740.0 / 2.0), 290.0)
+        catalog_pushes = [
+            segment
+            for result in self.results.values()
+            for segment in result.segments
+            if segment.stroke.kind == "push"
+            and segment.stroke.depth == "short"
+        ]
+        self.assertEqual(len(catalog_pushes), 2)
+        for segment in catalog_pushes:
+            self.assertEqual(segment.stroke.contact_moment, 2)
+            self.assertLessEqual(
+                segment.validation.depth_from_net_mm,
+                450.0,
+            )
+            self.assertLess(segment.params.racket_velocity[2], 0.0)
 
     def test_patterns_and_role_changes_are_explicit(self):
         eight = build_exercise("figure_eight").strokes[:4]
@@ -252,6 +347,35 @@ class ExerciseSimulationTests(unittest.TestCase):
                 axis=1,
             )
             self.assertLess(float(np.max(frame_distances)), 180.0)
+
+    def test_standby_plateau_is_neutral_for_thirty_percent(self):
+        result = self.results["drive_to_drive"]
+        contacts = _contact_times(result)
+        tracks = build_racket_motion_tracks(result, contacts)
+        for player, player_tracks in tracks.items():
+            standby_center, standby_angle = standby_pose(player)
+            for current, following in zip(
+                player_tracks,
+                player_tracks[1:],
+            ):
+                contact_gap = following.times[2] - current.times[2]
+                plateau_start = current.times[-1]
+                plateau_end = following.times[0]
+                self.assertGreaterEqual(
+                    plateau_end - plateau_start,
+                    0.299 * contact_gap,
+                )
+                center, angle = _racket_pose(
+                    player,
+                    0.5 * (plateau_start + plateau_end),
+                    tracks,
+                )
+                np.testing.assert_allclose(center, standby_center, atol=1e-9)
+                np.testing.assert_allclose(angle, standby_angle, atol=1e-9)
+                local_handle = np.array([0.0, -1.0, 0.0])
+                handle = rotation_matrix_xyz(angle) @ local_handle
+                expected_x = -1.0 if player == "near" else 1.0
+                self.assertGreater(handle[0] * expected_x, 0.99)
 
     def test_search_and_video_jobs_are_pickleable(self):
         pickle.dumps(ExerciseSearchJob("drive_to_drive", 3))

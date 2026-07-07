@@ -14,7 +14,8 @@ from typing import Callable, Iterable
 
 import numpy as np
 
-from ..constants import BALL_RADIUS, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..constants import BALL_RADIUS, NET_HEIGHT, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..events import table_bounces
 from ..models import InitialConditions, RacketImpactParameters, SimulationResult
 from ..physics import (
     apply_racket_impact,
@@ -189,16 +190,10 @@ class SearchProgress:
     message: str = ""
 
 
-def _table_bounce_indices(result) -> np.ndarray:
-    contacts = np.isclose(result.x[2], TABLE_LEVEL, atol=1e-6) & (result.v[2] > 0)
-    starts = contacts & np.concatenate(([True], ~contacts[:-1]))
-    return np.where(starts)[0]
-
-
 def trajectory_metrics(result) -> TrajectoryMetrics:
-    bounces = _table_bounce_indices(result)
-    server = [i for i in bounces if result.x[0, i] < TABLE_LENGTH / 2]
-    opponent = [i for i in bounces if result.x[0, i] >= TABLE_LENGTH / 2]
+    bounces = table_bounces(result)
+    server = [event for event in bounces if event.side == "server"]
+    opponent = [event for event in bounces if event.side == "receiver"]
     after_net = np.where(result.x[0] >= TABLE_LENGTH / 2)[0]
     max_height = (
         float(np.max(result.x[2, after_net] - TABLE_LEVEL))
@@ -206,8 +201,8 @@ def trajectory_metrics(result) -> TrajectoryMetrics:
         else float("inf")
     )
 
-    def point(index: int) -> tuple[float, float]:
-        return float(result.x[0, index]), float(result.x[1, index])
+    def point(event) -> tuple[float, float]:
+        return float(event.point[0]), float(event.point[1])
 
     return TrajectoryMetrics(
         server_bounce=point(server[0]) if server else None,
@@ -646,7 +641,7 @@ def target_from_benchmark(depth: str, lane: str, server_x: float | None = None) 
         server_bounce_y=service_presets.DIRECT_LANES[lane]["y"],
         opponent_bounce_x=service_presets.DIRECT_DEPTHS[depth]["target_x"],
         opponent_bounce_y=service_presets.DIRECT_LANES[lane]["y"],
-        max_height_after_net={"short": 220.0, "two_bounce": 235.0, "long": 250.0}[depth],
+        max_height_after_net=NET_HEIGHT + 50.0,
         min_height_after_net=120.0,
         prefer_second_opponent_bounce=depth in {"short", "two_bounce"},
         forbid_second_opponent_bounce=depth == "long",

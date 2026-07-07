@@ -15,6 +15,7 @@ from ..physics import simulate_racket_impact
 from ..presets.returns import (
     PILOT_SERVICE_PARAMS,
     PROFILE_TARGETS,
+    PROFILE_TARGET_X,
     RETURN_PRESET_VECTORS,
 )
 from ..search.returns import (
@@ -34,6 +35,7 @@ def build_cases():
                 direction="elbow",
                 spin_rps=spin,
                 stroke_side=stroke_side,
+                target_x=PROFILE_TARGET_X.get(profile),
             )
             contact, index, params = build_return_preset(profile, stroke_side, service_result)
             yield profile, stroke_side, targets, contact, index, params, service_result
@@ -74,6 +76,7 @@ def retune(workers: int) -> dict[str, object]:
             direction="elbow",
             spin_rps=spin,
             stroke_side="forehand",
+            target_x=PROFILE_TARGET_X.get(profile),
         )
         result = search_return(
             service_result,

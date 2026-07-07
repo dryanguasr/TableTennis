@@ -50,8 +50,13 @@ class ReturnSimulationTests(unittest.TestCase):
                     "top_two_bounce": "two_bounce",
                     "top_long": "long",
                 }[name]
-                spin = (-15.0, 35.0, 10.0) if name.startswith("cut_") else (0.0, -45.0, 0.0)
-                targets = returns.StrokeTargets(depth=depth, spin_rps=spin, stroke_side=side)
+                _, spin = returns.PROFILE_TARGETS[name]
+                targets = returns.StrokeTargets(
+                    depth=depth,
+                    spin_rps=spin,
+                    stroke_side=side,
+                    target_x=returns.PROFILE_TARGET_X.get(name),
+                )
                 report = returns.validate_return(
                     params,
                     simulate_racket_impact(params, t_max=3.0),
