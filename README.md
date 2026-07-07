@@ -1,45 +1,37 @@
 # Table Tennis Physics Simulator
 
-Simulador tridimensional de tenis de mesa para estudiar trayectorias, impactos
-con raqueta, servicios y devoluciones. El proyecto incluye búsqueda de
-parámetros, validadores de legalidad, benchmarks reproducibles, notebooks
-interactivos y exportación MP4.
+Three-dimensional table tennis simulator for studying trajectories, racket impacts, serves, and returns. The project includes parameter search, legality validators, reproducible benchmarks, interactive notebooks, and MP4 export.
 
-![Simulación de un servicio](docs/assets/backhand_composite_service.gif)
+![Service simulation](docs/assets/third_ball_change_of_pace.gif)
 
-## Instalación
+## Installation
 
-Requiere Python 3.10 o superior. En Windows, el instalador crea el entorno,
-instala el paquete y registra el kernel con la ruta absoluta correcta:
+Requires Python 3.10 or higher. On Windows, the installer creates the environment, installs the package, and registers the kernel with the correct absolute path:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_environment.ps1
 ```
 
-Después, seleccione **Python (TableTennis)** en Jupyter o VS Code. No use el
-kernel genérico `Python 3`: puede apuntar a otro intérprete donde el paquete no
-está instalado.
+Then select **Python (TableTennis)** in Jupyter or VS Code. Do not use the generic `Python 3` kernel: it may point to a different interpreter where the package is not installed.
 
-Diagnóstico rápido:
+Quick diagnostic:
 
 ```powershell
 .\.venv\Scripts\table-tennis.exe doctor
 ```
 
-La dependencia base es NumPy. Los extras disponibles son:
+The base dependency is NumPy. The available extras are:
 
-- `search`: SciPy para optimización global y pulido local.
-- `visualization`: Matplotlib para gráficos y animaciones.
-- `notebooks`: JupyterLab, widgets, Matplotlib y SciPy.
-- `dev`: entorno completo usado por pruebas y notebooks.
+* `search`: SciPy for global optimization and local polishing.
+* `visualization`: Matplotlib for plots and animations.
+* `notebooks`: JupyterLab, widgets, Matplotlib, and SciPy.
+* `dev`: full environment used by tests and notebooks.
 
-FFmpeg es una dependencia externa opcional necesaria para guardar MP4. Puede
-estar en `PATH` o indicarse con `--ffmpeg`.
+FFmpeg is an optional external dependency required to save MP4 files. It can be available in `PATH` or provided with `--ffmpeg`.
 
-## Uso
+## Usage
 
-La interfaz instalada es `table-tennis`; también puede usarse
-`python -m table_tennis`.
+The installed interface is `table-tennis`; it can also be used through `python -m table_tennis`.
 
 ```powershell
 table-tennis --help
@@ -68,40 +60,23 @@ table-tennis generate exercise-viewer
 table-tennis generate racket-viewer
 ```
 
-La generación de devoluciones produce videos de hasta cinco segundos y se
-detiene antes si el centro de la bola cae por debajo del piso. Use
-`--duration` para cambiar el límite.
+Return generation produces videos of up to five seconds and stops earlier if the ball center falls below the floor. Use `--duration` to change the limit.
 
-`generate benchmark-videos` administra 118 casos: 54 directos, 54 con raqueta
-y 10 devoluciones. Verifica cada MP4 con FFprobe, omite archivos válidos,
-regenera archivos corruptos, publica mediante renombrado atómico y guarda el
-resumen en `outputs/benchmarks/video_manifest.json`. Use `--overwrite` para
-forzar la regeneración y `--workers` para paralelizar en Windows.
+`generate benchmark-videos` manages 118 cases: 54 direct serves, 54 racket serves, and 10 returns. It checks each MP4 with FFprobe, skips valid files, regenerates corrupted files, publishes through atomic renaming, and saves the summary to `outputs/benchmarks/video_manifest.json`. Use `--overwrite` to force regeneration and `--workers` to parallelize on Windows.
 
-Los 54 servicios directos y sus 54 equivalentes con raqueta comparten la misma
-calibración de trayectoria baja: entre el primer bote propio y el primer bote
-receptor el ápice no puede superar 50 mm sobre la malla, y el primer rebote del
-receptor no puede superar 25 mm sobre ella. La calibración actual deja el peor
-servicio en 49,86 mm de vuelo, 3,56 mm de rebote, 5,05 mm de holgura mínima
-sobre la malla y 17,57 mm de error de bote.
+The 54 direct serves and their 54 racket-based equivalents share the same low-trajectory calibration: between the first bounce on the server’s side and the first bounce on the receiver’s side, the apex may not exceed 50 mm above the net, and the first receiver-side bounce may not exceed 25 mm above it. The current calibration leaves the worst serve at 49.86 mm of flight, 3.56 mm of bounce, 5.05 mm of minimum net clearance, and 17.57 mm of bounce error.
 
-## Modelo físico ACE
+## ACE physical model
 
-El vuelo y el contacto con la mesa siguen el baseline analítico publicado por
-Dürr et al. para Ace. Se usan masa de 2.7 g, radio de 20 mm, densidad del aire
-de 1.204 kg/m³, `c_d=0.55`, arrastre cuadrático, Magnus dependiente de la razón
-velocidad/efecto, efecto constante durante el vuelo e integración RK4. El
-rebote usa `ε=0.98-0.02·|v_z|` con velocidad en m/s y la transición matricial
-ACE entre deslizamiento y rodadura con `μ=0.25`.
-El artículo de referencia está versionado en
+The flight and table-contact model follow the analytical baseline published by Dürr et al. for Ace. The model uses a mass of 2.7 g, a radius of 20 mm, air density of 1.204 kg/m³, `c_d=0.55`, quadratic drag, a Magnus effect dependent on the speed/spin ratio, constant spin during flight, and RK4 integration. The bounce uses `ε=0.98-0.02·|v_z|`, with velocity in m/s, and the ACE matrix transition between sliding and rolling with `μ=0.25`.
+
+The reference paper is versioned at:
+
 `docs/Articles/[Dür 2026] Outplaying elite table tennis players with an Autonomous Robot.pdf`.
 
-El contacto con la raqueta conserva deliberadamente los modelos existentes
-`legacy` y `coulomb`: el artículo no publica los coeficientes ajustados
-necesarios para reproducir su contacto robot–bola sin introducir supuestos.
+Racket contact deliberately preserves the existing `legacy` and `coulomb` models: the paper does not publish the fitted coefficients required to reproduce its robot–ball contact without introducing assumptions.
 
-Tras cambiar el modelo físico, la recalibración completa se ejecuta por etapas
-reanudables:
+After changing the physical model, full recalibration is run in resumable stages:
 
 ```powershell
 table-tennis search retune-all --suite direct --workers 4
@@ -110,104 +85,71 @@ table-tennis search retune-all --suite returns --workers 4
 table-tennis search retune-all --suite exercises --workers 4
 ```
 
-Los candidatos y checkpoints quedan en `outputs/search/retune/`. Ninguna
-pasada parcial sustituye automáticamente presets versionados. El estado ACE
-promovido valida 54 servicios directos, 54 servicios con raqueta, tres
-servicios piloto, diez devoluciones y diez ejercicios.
+Candidates and checkpoints are stored in `outputs/search/retune/`. No partial run automatically replaces versioned presets. The promoted ACE state validates 54 direct serves, 54 racket serves, three pilot serves, ten returns, and ten exercises.
 
-### Ejercicios multigolpe
+### Multi-stroke exercises
 
-`generate exercise-videos` produce diez rallies encadenados: drive–drive,
-revés–revés, ochos, Falkenberg, pega pasa de drive y revés, dos aperturas de
-tercera bola más pega pasa, y tercera bola con cambio de ritmo y corte en
-variantes íntegramente de drive y de revés. Cada patrón contiene al menos tres
-vueltas; los dos ejercicios continuos contienen diez golpes.
+`generate exercise-videos` produces ten chained rallies: forehand–forehand, backhand–backhand, figure eights, Falkenberg, forehand and backhand hit-and-move drills, two third-ball opening drills plus hit-and-move, and third-ball drills with pace change and chop in fully forehand and fully backhand variants. Each pattern contains at least three cycles; the two continuous exercises contain ten strokes.
 
-La generación normal carga controles de raqueta calibrados, vuelve a simular y
-validar todos los segmentos y solo entonces renderiza. Los videos muestran
-ambas raquetas, la vuelta y el golpe activo. Su duración se obtiene de la
-secuencia física completa, no de un límite fijo. Si se solicita un número de
-vueltas distinto de tres, los contactos adicionales se recalibran de forma
-determinista.
+Normal generation loads calibrated racket controls, re-simulates and validates all segments, and only then renders them. The videos show both rackets, the current cycle, and the active stroke. Their duration is obtained from the full physical sequence, not from a fixed limit. If a number of cycles other than three is requested, the additional contacts are recalibrated deterministically.
 
-Cada raqueta sigue una pista Bézier continua entre stand by, preparación,
-impacto, final de ejecución y regreso al stand by. La postura neutral queda
-detrás de la línea de fondo, en el centro del cuadrante de revés, con el mango
-apuntando hacia atrás. Entre dos golpes del mismo jugador, la recuperación y
-la aproximación ocupan 35 % del intervalo cada una; el 30 % central conserva
-exactamente esa postura neutral. Posición y orientación se reproducen a un tercio
-velocidad para evitar saltos visuales sin alterar la trayectoria física. En el
-impacto, el mango apunta hacia la izquierda relativa del jugador para el drive
-y hacia su derecha para el revés.
+Each racket follows a continuous Bézier track between standby, preparation, impact, follow-through, and return to standby. The neutral stance is behind the end line, centered in the backhand quadrant, with the handle pointing backward. Between two strokes by the same player, recovery and approach each take 35% of the interval; the central 30% preserves exactly that neutral stance. Position and orientation are played back at one third of the speed to avoid visual jumps without altering the physical trajectory. At impact, the handle points toward the player’s relative left for forehands and toward the player’s right for backhands.
 
-Las fases y profundidades se asignan de forma central: ataque de continuidad
-en punto 3 y largo; apertura de topspin al 15 % del punto 4 y larga; push y
-bloqueo en punto 2; corte defensivo en punto 4. Un objetivo corto queda a
-unos 300 mm de la red y debe observarse dentro de los primeros 450 mm. Un
-objetivo largo queda cerca del fondo y debe superar 800 mm desde la red. La
-validación comprueba la fase seleccionada y la profundidad observada.
+Phases and depths are assigned centrally: continuity attack at point 3 and long; topspin opening at 15% of point 4 and long; push and block at point 2; defensive chop at point 4. A short target is placed about 300 mm from the net and must be observed within the first 450 mm. A long target is placed near the end line and must exceed 800 mm from the net. Validation checks the selected phase and the observed depth.
 
-Además de legalidad, dirección y profundidad, cada segmento limita el ápice
-del vuelo a 50 mm sobre la red y el primer rebote a 25 mm sobre ella. Estos
-límites se miden sobre los eventos físicos simulados, no sobre la animación.
-Los controles versionados dejan actualmente el peor caso en 49,45 mm durante
-el vuelo y 14,50 mm tras el rebote. La reproducción se ralentiza a un tercio
-de la velocidad física para conservar fluidez con las trayectorias más planas.
+In addition to legality, direction, and depth, each segment limits the flight apex to 50 mm above the net and the first bounce to 25 mm above it. These limits are measured on the simulated physical events, not on the animation. The versioned controls currently leave the worst case at 49.45 mm during flight and 14.50 mm after the bounce. Playback is slowed down to one third of the physical speed to preserve smoothness with the flattest trajectories.
 
-Opciones principales:
+Main options:
 
-- `--exercise`, repetible, selecciona ejercicios.
-- `--cycles`, con valor y mínimo de tres, amplía el patrón.
-- `--workers`, `--overwrite`, `--limit`, `--fps` y `--ffmpeg` controlan el lote.
-- `--dry-run` enumera trabajos sin calibrar ni renderizar.
+* `--exercise`, repeatable, selects exercises.
+* `--cycles`, with value and minimum of three, extends the pattern.
+* `--workers`, `--overwrite`, `--limit`, `--fps`, and `--ffmpeg` control the batch.
+* `--dry-run` lists jobs without calibrating or rendering.
 
-Los MP4 y el manifiesto se guardan en `outputs/exercises/`. Los archivos
-válidos se omiten mediante FFprobe y cada render se publica atómicamente.
-`search exercise` vuelve a calibrar uno o varios ejercicios y exporta los
-parámetros candidatos a `outputs/search/exercises/candidates.json`; no
-reemplaza automáticamente los presets versionados.
+The MP4 files and the manifest are saved in `outputs/exercises/`. Valid files are skipped using FFprobe, and each render is published atomically.
 
-`generate exercise-viewer` crea
-`outputs/viewers/exercise_viewer.html`. Es una página estática con filtros por
-familia y ala, búsqueda, secuencia técnica y reproducción del MP4 seleccionado
-con autoplay, sonido desactivado y loop. Las rutas son relativas: se puede
-abrir directamente sin servidor. Cuando falta un video, el visor muestra el
-comando exacto para generarlo.
+`search exercise` recalibrates one or more exercises and exports candidate parameters to `outputs/search/exercises/candidates.json`; it does not automatically replace versioned presets.
 
-## Organización
+`generate exercise-viewer` creates:
+
+`outputs/viewers/exercise_viewer.html`.
+
+It is a static page with filters by family and wing, search, technical sequence, and playback of the selected MP4 with autoplay, muted audio, and loop enabled. Paths are relative: it can be opened directly without a server. When a video is missing, the viewer shows the exact command required to generate it.
+
+## Organization
 
 ```text
 src/table_tennis/
-  physics.py           motor físico sin dependencias de interfaz
-  models.py            condiciones, impactos, resultados y eventos
-  events.py            consultas y momentos 1-6
-  exchange.py          contrato del intercambio servicio-recepción
-  rally.py             rallies multigolpe bidireccionales
-  validation.py        legalidad y tolerancias
-  search/              optimización de servicios, devoluciones y ejercicios
-  presets/             datos reproducibles
-  benchmarks/          validación y medición
-  visualization/       dibujo, animación, videos y visor
-notebooks/             exploradores interactivos activos
-tests/                 pruebas unitarias y de arquitectura
-docs/assets/           recursos de documentación
-archive/               material histórico no mantenido
-outputs/               videos, visores y resultados regenerables
+  physics.py           physics engine without interface dependencies
+  models.py            conditions, impacts, results, and events
+  events.py            queries and moments 1-6
+  exchange.py          serve-receive exchange contract
+  rally.py             bidirectional multi-stroke rallies
+  validation.py        legality and tolerances
+  search/              optimization of serves, returns, and exercises
+  presets/             reproducible data
+  benchmarks/          validation and measurement
+  visualization/       drawing, animation, videos, and viewer
+notebooks/             active interactive explorers
+tests/                 unit and architecture tests
+docs/assets/           documentation assets
+archive/               unmaintained historical material
+outputs/               regenerable videos, viewers, and results
 ```
 
-`outputs/` está ignorado por Git. Las ubicaciones predeterminadas son:
+`outputs/` is ignored by Git. The default locations are:
 
-- `outputs/benchmarks/direct/`
-- `outputs/benchmarks/racket/`
-- `outputs/benchmarks/returns/`
-- `outputs/exercises/`
-- `outputs/search/exercises/`
-- `outputs/search/retune/`
-- `outputs/notebooks/<notebook>/`
-- `outputs/viewers/exercise_viewer.html`
-- `outputs/viewers/racket_benchmark_viewer.html`
+* `outputs/benchmarks/direct/`
+* `outputs/benchmarks/racket/`
+* `outputs/benchmarks/returns/`
+* `outputs/exercises/`
+* `outputs/search/exercises/`
+* `outputs/search/retune/`
+* `outputs/notebooks/<notebook>/`
+* `outputs/viewers/exercise_viewer.html`
+* `outputs/viewers/racket_benchmark_viewer.html`
 
-## API Python
+## Python API
 
 ```python
 from table_tennis import InitialConditions, simulate, simulate_exercise
@@ -220,39 +162,32 @@ exercise = simulate_exercise(build_exercise("figure_eight", cycles=3))
 assert exercise.passed
 ```
 
-Los contratos del intercambio están en `table_tennis.exchange`; los
-validadores en `table_tennis.validation`; y las búsquedas en
-`table_tennis.search.service` y `table_tennis.search.returns`.
+The exchange contracts are in `table_tennis.exchange`; validators are in `table_tennis.validation`; and searches are in `table_tennis.search.service` and `table_tennis.search.returns`.
 
 ## Notebooks
 
-- `01_direct_trajectory_explorer.ipynb`: trayectoria directa y presets.
-- `02_racket_impact_explorer.ipynb`: impacto, gesto y momentos de contacto.
-- `03_service_parameter_search.ipynb`: búsqueda con progreso visible.
-- `04_serve_return_search.ipynb`: servicio y devolución configurables.
+* `01_direct_trajectory_explorer.ipynb`: direct trajectory and presets.
+* `02_racket_impact_explorer.ipynb`: impact, gesture, and contact moments.
+* `03_service_parameter_search.ipynb`: search with visible progress.
+* `04_serve_return_search.ipynb`: configurable serve and return.
 
-Ejecute primero el instalador y seleccione el kernel **Python
-(TableTennis)**. Cada notebook comprueba el intérprete antes de importar el
-paquete y explica cómo reparar una selección incorrecta. Los cuatro incluyen
-una acción explícita para guardar y mostrar un MP4 bajo su propia carpeta en
-`outputs/notebooks/`.
+Run the installer first and select the **Python (TableTennis)** kernel. Each notebook checks the interpreter before importing the package and explains how to fix an incorrect selection. All four include an explicit action to save and display an MP4 under their own folder in `outputs/notebooks/`.
 
-## Migración desde los scripts antiguos
+## Migration from the old scripts
 
-| Antes | Ahora |
-|---|---|
-| `python table_tennis_simulation.py` | `table-tennis simulate` |
-| `python benchmark_direct_services.py` | `table-tennis benchmark direct` |
-| `python benchmark_racket_services.py` | `table-tennis benchmark racket` |
-| `python benchmark_returns.py` | `table-tennis benchmark returns` |
-| `python service_parameter_search.py` | `table-tennis search service` |
-| `python generate_return_videos.py` | `table-tennis generate return-videos` |
+| Before                                    | Now                                   |
+| ----------------------------------------- | ------------------------------------- |
+| `python table_tennis_simulation.py`       | `table-tennis simulate`               |
+| `python benchmark_direct_services.py`     | `table-tennis benchmark direct`       |
+| `python benchmark_racket_services.py`     | `table-tennis benchmark racket`       |
+| `python benchmark_returns.py`             | `table-tennis benchmark returns`      |
+| `python service_parameter_search.py`      | `table-tennis search service`         |
+| `python generate_return_videos.py`        | `table-tennis generate return-videos` |
 | `python generate_racket_benchmark_web.py` | `table-tennis generate racket-viewer` |
 
-La migración es intencionalmente inmediata: los módulos y scripts antiguos de
-la raíz ya no existen.
+The migration is intentionally immediate: the old root-level modules and scripts no longer exist.
 
-## Verificación
+## Verification
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
@@ -262,6 +197,4 @@ la raíz ya no existen.
 .\.venv\Scripts\table-tennis.exe benchmark returns
 ```
 
-El banco piloto debe mantener diez devoluciones legales y los benchmarks de
-servicio deben conservar sus márgenes calibrados, incluyendo los límites de
-trayectoria baja de 50 mm de vuelo y 25 mm de rebote sobre la malla.
+The pilot bank must keep ten legal returns, and the service benchmarks must preserve their calibrated margins, including the low-trajectory limits of 50 mm of flight and 25 mm of bounce above the net.
