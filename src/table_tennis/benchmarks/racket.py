@@ -17,6 +17,7 @@ import numpy as np
 
 from . import direct as direct_services
 from ..constants import BALL_RADIUS, G, TABLE_HEIGHT, TABLE_WIDTH
+from ..events import table_bounces
 from ..models import RacketImpactParameters
 from ..physics import racket_normal, simulate_racket_impact
 from ..visualization import animate_racket_impact, resolve_ffmpeg_path
@@ -140,10 +141,7 @@ def build_cases() -> Iterable[BenchmarkCase]:
 
 
 def count_table_bounces(result) -> int:
-    table_level = TABLE_HEIGHT + BALL_RADIUS
-    contacts = np.isclose(result.x[2], table_level, atol=1e-6) & (result.v[2] > 0)
-    starts = contacts & np.concatenate(([True], ~contacts[:-1]))
-    return int(np.count_nonzero(starts))
+    return len(table_bounces(result))
 
 
 def case_filename(case: BenchmarkCase) -> str:
@@ -176,6 +174,7 @@ def run_case(
         result = simulate_racket_impact(case.params, dt=dt, t_max=t_max)
     elapsed = time.perf_counter() - start
     assert result is not None
+    max_height_above_net, rebound_height_above_net = direct_services.low_arc_metrics(result)
     video_path = save_case_video(case, result, video_dir, ffmpeg_path) if video_dir is not None else None
     return {
         "service": case.service,
@@ -190,6 +189,14 @@ def run_case(
         "incoming_vx_mm_s": case.params.ball_velocity[0],
         "incoming_vy_mm_s": case.params.ball_velocity[1],
         "incoming_vz_mm_s": case.params.ball_velocity[2],
+        "max_height_above_net_mm": max_height_above_net,
+        "rebound_height_above_net_mm": rebound_height_above_net,
+        "inside_low_arc": int(
+            max_height_above_net
+            <= direct_services.MAX_FLIGHT_HEIGHT_ABOVE_NET_MM
+            and rebound_height_above_net
+            <= direct_services.MAX_REBOUND_HEIGHT_ABOVE_NET_MM
+        ),
         "final_z_mm": float(result.x[2, -1]),
         "video": str(video_path) if video_path is not None else "",
     }
@@ -220,7 +227,8 @@ def main(argv: list[str] | None = None) -> None:
 
     print(
         "service,depth,lane,repeat,total_ms,avg_ms,samples,bounces,"
-        "initial_x_mm,incoming_vx_mm_s,incoming_vy_mm_s,incoming_vz_mm_s,final_z_mm,video"
+        "initial_x_mm,incoming_vx_mm_s,incoming_vy_mm_s,incoming_vz_mm_s,"
+        "max_height_above_net_mm,rebound_height_above_net_mm,inside_low_arc,final_z_mm,video"
     )
     for case in build_cases():
         row = run_case(
@@ -236,7 +244,9 @@ def main(argv: list[str] | None = None) -> None:
             f"{row['total_ms']:.3f},{row['avg_ms']:.3f},{row['samples']},{row['bounces']},"
             f"{row['initial_x_mm']:.1f},{row['incoming_vx_mm_s']:.1f},"
             f"{row['incoming_vy_mm_s']:.1f},{row['incoming_vz_mm_s']:.1f},"
-            f"{row['final_z_mm']:.1f},{row['video']}"
+            f"{row['max_height_above_net_mm']:.1f},"
+            f"{row['rebound_height_above_net_mm']:.1f},"
+            f"{row['inside_low_arc']},{row['final_z_mm']:.1f},{row['video']}"
         )
 
 

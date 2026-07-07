@@ -14,13 +14,13 @@ from .physics import simulate_racket_impact
 
 
 SERVICE_DEPTH_X = {
-    "short": TABLE_LENGTH / 2 + 220.0,
+    "short": TABLE_LENGTH / 2 + 330.0,
     "two_bounce": TABLE_LENGTH / 2 + 520.0,
     "long": TABLE_LENGTH - 360.0,
 }
 RETURN_DEPTH_X = {
     "short": TABLE_LENGTH / 2 - 270.0,
-    "two_bounce": TABLE_LENGTH / 2 - 450.0,
+    "two_bounce": TABLE_LENGTH / 2 - 320.0,
     "long": 360.0,
 }
 SERVICE_DIRECTION_Y = {
@@ -81,6 +81,8 @@ class ServiceTargets:
     bounce_tolerance_mm: float = 75.0
     spin_tolerance_rps: float = 10.0
     min_net_clearance_mm: float = 5.0
+    max_height_above_net_mm: float | None = None
+    max_rebound_height_above_net_mm: float | None = None
     target_x: float | None = None
     target_y: float | None = None
 

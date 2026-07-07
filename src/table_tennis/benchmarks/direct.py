@@ -16,7 +16,8 @@ from typing import Iterable
 
 import numpy as np
 
-from ..constants import BALL_RADIUS, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..constants import BALL_RADIUS, NET_HEIGHT, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH
+from ..events import table_bounces
 from ..models import InitialConditions
 from ..physics import simulate
 from ..visualization import animate_simulation, resolve_ffmpeg_path
@@ -30,137 +31,100 @@ SERVICE_TYPES = {
     "pendulum": {
         "position": (-300.0, TABLE_WIDTH * 0.16, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -45.0 * RPS, -35.0 * RPS),
-        "velocity_adjust": (80.0, 0.0, 0.0),
     },
     "reverse_pendulum": {
         "position": (-300.0, TABLE_WIDTH * 0.16, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -45.0 * RPS, 35.0 * RPS),
-        "velocity_adjust": (-40.0, 0.0, 0.0),
     },
     "hook": {
         "position": (-300.0, TABLE_WIDTH * 0.14, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -50.0 * RPS, -45.0 * RPS),
-        "velocity_adjust": (200.0, 0.0, 0.0),
     },
     "tomahawk": {
         "position": (-300.0, TABLE_WIDTH * 0.74, TABLE_HEIGHT + 260.0),
-        "omega": (50.0 * RPS, -30.0 * RPS, 0.0),
-        "velocity_adjust": (60.0, 0.0, 0.0),
+        "omega": (0.0, -30.0 * RPS, -45.0 * RPS),
     },
     "reverse_tomahawk": {
         "position": (-300.0, TABLE_WIDTH * 0.68, TABLE_HEIGHT + 260.0),
-        "omega": (-50.0 * RPS, -30.0 * RPS, 0.0),
-        "velocity_adjust": (40.0, 0.0, 0.0),
+        "omega": (0.0, -30.0 * RPS, 45.0 * RPS),
     },
     "backhand_standard": {
         "position": (-300.0, TABLE_WIDTH * 0.50, TABLE_HEIGHT + 260.0),
         "omega": (0.0, -40.0 * RPS, 35.0 * RPS),
-        "depth_velocity": {
-            "short": (7200.0, 0.0, -2300.0),
-            "two_bounce": (8000.0, 0.0, -2300.0),
-            "long": (9000.0, 0.0, -2500.0),
-        },
     },
 }
 VELOCITY_OVERRIDES = {
-    ("pendulum", "short", "forehand"): (5910.0, 2776.4, -3069.6),
-    ("pendulum", "short", "elbow"): (6070.6, 1938.1, -3064.0),
-    ("pendulum", "short", "backhand"): (6156.4, 1110.3, -3200.3),
-    ("pendulum", "two_bounce", "forehand"): (6824.4, 2961.5, -3284.0),
-    ("pendulum", "two_bounce", "elbow"): (6794.0, 2093.7, -3763.4),
-    ("pendulum", "two_bounce", "backhand"): (7620.6, 1230.0, -1968.2),
-    ("pendulum", "long", "forehand"): (7718.4, 3177.3, -3669.6),
-    ("pendulum", "long", "elbow"): (8196.7, 2391.6, -3343.2),
-    ("pendulum", "long", "backhand"): (8131.4, 1585.4, -3759.8),
-    ("reverse_pendulum", "short", "forehand"): (6658.4, -125.9, -2269.6),
-    ("reverse_pendulum", "short", "elbow"): (6224.8, -1088.2, -3174.3),
-    ("reverse_pendulum", "short", "backhand"): (6177.6, -1962.2, -2692.7),
-    ("reverse_pendulum", "two_bounce", "forehand"): (7791.8, -317.9, -2368.1),
-    ("reverse_pendulum", "two_bounce", "elbow"): (7241.8, -1335.0, -3297.4),
-    ("reverse_pendulum", "two_bounce", "backhand"): (6791.5, -2106.0, -3820.9),
-    ("reverse_pendulum", "long", "forehand"): (8832.0, -650.0, -2935.7),
-    ("reverse_pendulum", "long", "elbow"): (8693.7, -1538.0, -2865.6),
-    ("reverse_pendulum", "long", "backhand"): (8772.2, -2415.3, -2384.6),
-    ("hook", "short", "forehand"): (5782.7, 3169.6, -3610.0),
-    ("hook", "short", "elbow"): (6012.4, 2385.3, -3371.0),
-    ("hook", "short", "backhand"): (6384.9, 1549.8, -3147.7),
-    ("hook", "two_bounce", "forehand"): (6992.5, 3583.8, -2810.6),
-    ("hook", "two_bounce", "elbow"): (7152.4, 2694.2, -2844.1),
-    ("hook", "two_bounce", "backhand"): (7667.4, 1790.7, -2383.0),
-    ("hook", "long", "forehand"): (8587.4, 3955.7, -2435.5),
-    ("hook", "long", "elbow"): (8105.0, 2995.9, -3489.8),
-    ("hook", "long", "backhand"): (8464.0, 2207.3, -3369.2),
-    ("tomahawk", "short", "forehand"): (6178.0, 1360.0, -2632.6),
-    ("tomahawk", "short", "elbow"): (5954.5, 672.2, -3287.2),
-    ("tomahawk", "short", "backhand"): (6323.8, -563.1, -2512.5),
-    ("tomahawk", "two_bounce", "forehand"): (6999.9, 1549.3, -3318.9),
-    ("tomahawk", "two_bounce", "elbow"): (7519.8, 158.1, -2005.5),
-    ("tomahawk", "two_bounce", "backhand"): (7178.8, -263.9, -3257.3),
-    ("tomahawk", "long", "forehand"): (8477.9, 1392.2, -2957.2),
-    ("tomahawk", "long", "elbow"): (8772.8, 406.8, -2782.8),
-    ("tomahawk", "long", "backhand"): (8984.8, -639.5, -2597.3),
-    ("reverse_tomahawk", "short", "forehand"): (6022.0, -888.4, -3105.9),
-    ("reverse_tomahawk", "short", "elbow"): (5915.2, -1857.6, -3351.8),
-    ("reverse_tomahawk", "short", "backhand"): (6111.1, -2588.9, -2697.0),
-    ("reverse_tomahawk", "two_bounce", "forehand"): (7047.2, -939.1, -3288.8),
-    ("reverse_tomahawk", "two_bounce", "elbow"): (7110.3, -1712.5, -2928.1),
-    ("reverse_tomahawk", "two_bounce", "backhand"): (7390.3, -2461.8, -2354.5),
-    ("reverse_tomahawk", "long", "forehand"): (8396.5, -872.5, -3206.8),
-    ("reverse_tomahawk", "long", "elbow"): (8436.7, -1725.8, -3054.5),
-    ("reverse_tomahawk", "long", "backhand"): (8807.2, -2482.6, -2483.2),
-    ("backhand_standard", "short", "forehand"): (6452.6, -162.4, -2597.2),
-    ("backhand_standard", "short", "elbow"): (6107.9, -1100.0, -3054.8),
-    ("backhand_standard", "short", "backhand"): (6116.6, -1951.5, -2507.0),
-    ("backhand_standard", "two_bounce", "forehand"): (7624.7, -383.8, -2601.4),
-    ("backhand_standard", "two_bounce", "elbow"): (7520.3, -1238.7, -2233.8),
-    ("backhand_standard", "two_bounce", "backhand"): (7206.8, -2158.6, -2497.1),
-    ("backhand_standard", "long", "forehand"): (8902.7, -634.4, -2736.4),
-    ("backhand_standard", "long", "elbow"): (8141.0, -1567.9, -3489.2),
-    ("backhand_standard", "long", "backhand"): (8160.2, -2400.1, -3151.1),
+    ("backhand_standard", "long", "backhand"): (6610.7728, -1271.0604, -871.5637),
+    ("backhand_standard", "long", "elbow"): (6672.5440, -472.4652, -902.4925),
+    ("backhand_standard", "long", "forehand"): (6817.9137, 315.5044, -1190.9629),
+    ("backhand_standard", "short", "backhand"): (4974.5924, -1043.6443, -1087.3914),
+    ("backhand_standard", "short", "elbow"): (5010.0254, -270.6272, -1082.8217),
+    ("backhand_standard", "short", "forehand"): (5063.2715, 495.3634, -1089.7890),
+    ("backhand_standard", "two_bounce", "backhand"): (5424.1351, -1102.1550, -1045.4896),
+    ("backhand_standard", "two_bounce", "elbow"): (5372.1247, -312.5430, -765.6440),
+    ("backhand_standard", "two_bounce", "forehand"): (5457.9430, 453.1984, -840.3857),
+    ("hook", "long", "backhand"): (6710.2535, 987.6781, -1288.1652),
+    ("hook", "long", "elbow"): (6644.8391, 1791.6037, -1084.9203),
+    ("hook", "long", "forehand"): (6616.2006, 2619.9992, -1063.8062),
+    ("hook", "short", "backhand"): (4977.9115, 752.8503, -1063.0504),
+    ("hook", "short", "elbow"): (4957.2153, 1528.7113, -1091.8937),
+    ("hook", "short", "forehand"): (4962.8816, 2334.1175, -1081.1327),
+    ("hook", "two_bounce", "backhand"): (4975.7870, 740.6161, -160.4612),
+    ("hook", "two_bounce", "elbow"): (5211.1271, 1542.5715, -555.5472),
+    ("hook", "two_bounce", "forehand"): (5196.8187, 2327.3549, -564.3089),
+    ("pendulum", "long", "backhand"): (6697.2422, 883.5467, -1264.6489),
+    ("pendulum", "long", "elbow"): (6653.6825, 1689.1624, -1190.5581),
+    ("pendulum", "long", "forehand"): (6602.6047, 2508.9579, -1032.7097),
+    ("pendulum", "short", "backhand"): (4975.2250, 667.4475, -1070.2852),
+    ("pendulum", "short", "elbow"): (4956.6510, 1443.6388, -1096.9834),
+    ("pendulum", "short", "forehand"): (4959.7400, 2244.3519, -1106.5025),
+    ("pendulum", "two_bounce", "backhand"): (5376.2418, 712.0833, -870.7831),
+    ("pendulum", "two_bounce", "elbow"): (5349.0757, 1490.8859, -873.0242),
+    ("pendulum", "two_bounce", "forehand"): (5374.6603, 2304.3965, -1014.7343),
+    ("reverse_pendulum", "long", "backhand"): (6745.2198, -13.4803, -1151.9396),
+    ("reverse_pendulum", "long", "elbow"): (6775.7256, 781.1098, -961.2155),
+    ("reverse_pendulum", "long", "forehand"): (6914.4493, 1579.3374, -1094.8977),
+    ("reverse_pendulum", "short", "backhand"): (5021.9161, 164.0648, -1080.7397),
+    ("reverse_pendulum", "short", "elbow"): (5075.0061, 926.1168, -1053.9065),
+    ("reverse_pendulum", "short", "forehand"): (5153.3839, 1655.7024, -1043.5146),
+    ("reverse_pendulum", "two_bounce", "backhand"): (5456.8361, 122.9254, -974.3821),
+    ("reverse_pendulum", "two_bounce", "elbow"): (5334.2036, 871.5216, -544.0097),
+    ("reverse_pendulum", "two_bounce", "forehand"): (5095.1666, 1529.4306, -101.1254),
+    ("reverse_tomahawk", "long", "backhand"): (6681.6975, -2101.7983, -892.0778),
+    ("reverse_tomahawk", "long", "elbow"): (6780.9489, -1276.1984, -1031.2518),
+    ("reverse_tomahawk", "long", "forehand"): (6847.5746, -452.8341, -1026.1395),
+    ("reverse_tomahawk", "short", "backhand"): (4996.0625, -1790.9089, -1067.0533),
+    ("reverse_tomahawk", "short", "elbow"): (5016.4692, -981.8434, -1053.1970),
+    ("reverse_tomahawk", "short", "forehand"): (5062.1179, -194.0303, -1036.3235),
+    ("reverse_tomahawk", "two_bounce", "backhand"): (5429.5750, -1863.0979, -975.5983),
+    ("reverse_tomahawk", "two_bounce", "elbow"): (5265.0504, -1010.6398, -513.6243),
+    ("reverse_tomahawk", "two_bounce", "forehand"): (5561.3951, -259.3291, -1127.9040),
+    ("tomahawk", "long", "backhand"): (7065.2763, -1103.7348, -1106.6202),
+    ("tomahawk", "long", "elbow"): (6891.3996, -288.9333, -920.5987),
+    ("tomahawk", "long", "forehand"): (6872.1339, 530.4556, -1158.3934),
+    ("tomahawk", "short", "backhand"): (5207.3257, -1298.2142, -1032.6381),
+    ("tomahawk", "short", "elbow"): (5114.8002, -515.3324, -1003.2918),
+    ("tomahawk", "short", "forehand"): (5054.7804, 264.9278, -1027.5737),
+    ("tomahawk", "two_bounce", "backhand"): (5695.8195, -1251.1710, -1019.6440),
+    ("tomahawk", "two_bounce", "elbow"): (5423.9697, -453.5271, -590.1045),
+    ("tomahawk", "two_bounce", "forehand"): (5489.8347, 324.7757, -886.9578),
 }
 DEPTHS = {
-    "short": {"vel": (7200.0, 0.0, -2300.0), "target_x": TABLE_LENGTH / 2 + 220.0},
-    "two_bounce": {"vel": (8000.0, 0.0, -2300.0), "target_x": TABLE_LENGTH / 2 + 520.0},
-    "long": {"vel": (9000.0, 0.0, -2500.0), "target_x": TABLE_LENGTH - 360.0},
+    # With the ACE flight/table model, 330 mm beyond the net remains a
+    # genuinely short service while retaining the required 5 mm net margin.
+    "short": {"target_x": TABLE_LENGTH / 2 + 330.0},
+    "two_bounce": {"target_x": TABLE_LENGTH / 2 + 520.0},
+    "long": {"target_x": TABLE_LENGTH - 360.0},
 }
 LANES = {
     "forehand": {"y": TABLE_WIDTH * 0.72},
     "elbow": {"y": TABLE_WIDTH * 0.50},
     "backhand": {"y": TABLE_WIDTH * 0.28},
 }
-LANE_VY = {
-    "pendulum": {
-        "short": {"forehand": 4000.0, "elbow": 2700.0, "backhand": 1700.0},
-        "two_bounce": {"forehand": 4000.0, "elbow": 2800.0, "backhand": 1800.0},
-        "long": {"forehand": 4000.0, "elbow": 3000.0, "backhand": 2000.0},
-    },
-    "reverse_pendulum": {
-        "short": {"forehand": 1030.0, "elbow": 30.0, "backhand": -975.0},
-        "two_bounce": {"forehand": 1050.0, "elbow": 40.0, "backhand": -970.0},
-        "long": {"forehand": 1070.0, "elbow": 50.0, "backhand": -970.0},
-    },
-    "hook": {
-        "short": {"forehand": 4100.0, "elbow": 3000.0, "backhand": 1900.0},
-        "two_bounce": {"forehand": 4200.0, "elbow": 3100.0, "backhand": 2300.0},
-        "long": {"forehand": 4200.0, "elbow": 3200.0, "backhand": 2500.0},
-    },
-    "tomahawk": {
-        "short": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
-        "two_bounce": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
-        "long": {"forehand": 1500.0, "elbow": 400.0, "backhand": -700.0},
-    },
-    "reverse_tomahawk": {
-        "short": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3200.0},
-        "two_bounce": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3250.0},
-        "long": {"forehand": -1250.0, "elbow": -2250.0, "backhand": -3250.0},
-    },
-    "backhand_standard": {
-        "short": {"forehand": -450.0, "elbow": -1500.0, "backhand": -2500.0},
-        "two_bounce": {"forehand": -450.0, "elbow": -1500.0, "backhand": -2500.0},
-        "long": {"forehand": -500.0, "elbow": -1600.0, "backhand": -2500.0},
-    },
-}
 TARGET_MARGIN_MM = 50.0
+NET_CLEARANCE_LEVEL = TABLE_HEIGHT + NET_HEIGHT + BALL_RADIUS
+MAX_FLIGHT_HEIGHT_ABOVE_NET_MM = 50.0
+MAX_REBOUND_HEIGHT_ABOVE_NET_MM = 25.0
 
 
 @dataclass(frozen=True)
@@ -176,9 +140,12 @@ def build_cases() -> Iterable[BenchmarkCase]:
     for service_name, service in SERVICE_TYPES.items():
         for depth_name, depth in DEPTHS.items():
             for lane_name, lane in LANES.items():
-                velocity = np.array(service.get("depth_velocity", {}).get(depth_name, depth["vel"]), dtype=float)
-                velocity += np.array(service.get("velocity_adjust", (0.0, 0.0, 0.0)), dtype=float)
-                velocity[1] = LANE_VY[service_name][depth_name][lane_name]
+                key = (service_name, depth_name, lane_name)
+                if key not in VELOCITY_OVERRIDES:
+                    raise KeyError(
+                        f"Missing calibrated direct-service velocity for {key}."
+                    )
+                velocity = VELOCITY_OVERRIDES[key]
                 position = service["position"]
                 yield BenchmarkCase(
                     service_name,
@@ -190,24 +157,40 @@ def build_cases() -> Iterable[BenchmarkCase]:
 
 
 def count_table_bounces(result) -> int:
-    table_level = TABLE_HEIGHT + BALL_RADIUS
-    contacts = np.isclose(result.x[2], table_level, atol=1e-6) & (result.v[2] > 0)
-    starts = contacts & np.concatenate(([True], ~contacts[:-1]))
-    return int(np.count_nonzero(starts))
+    return len(table_bounces(result))
 
 
 def first_opponent_bounce(result) -> tuple[float, float] | None:
-    table_level = TABLE_HEIGHT + BALL_RADIUS
-    hits = np.where(
-        (result.x[0] >= TABLE_LENGTH / 2)
-        & np.isclose(result.x[2], table_level, atol=1e-6)
-        & (result.v[2] > 0)
-    )[0]
-    if hits.size == 0:
+    hits = table_bounces(result, "receiver")
+    if not hits:
         return None
+    return float(hits[0].point[0]), float(hits[0].point[1])
 
-    point = result.x[:2, int(hits[0])]
-    return float(point[0]), float(point[1])
+
+def low_arc_metrics(result) -> tuple[float, float]:
+    """Return serve flight/rebound maxima relative to the legal net height."""
+
+    bounces = table_bounces(result)
+    server = [event for event in bounces if event.side == "server"]
+    receiver = [event for event in bounces if event.side == "receiver"]
+    if not server or not receiver:
+        return float("inf"), float("inf")
+
+    server_index = server[0].index
+    receiver_index = receiver[0].index
+    flight_height = float(
+        np.max(result.x[2, server_index : receiver_index + 1])
+        - NET_CLEARANCE_LEVEL
+    )
+    later_bounces = [
+        event.index for event in bounces if event.index > receiver_index
+    ]
+    rebound_end = later_bounces[0] if later_bounces else result.x.shape[1] - 1
+    rebound_height = float(
+        np.max(result.x[2, receiver_index : rebound_end + 1])
+        - NET_CLEARANCE_LEVEL
+    )
+    return flight_height, rebound_height
 
 
 def case_filename(case: BenchmarkCase) -> str:
@@ -243,6 +226,7 @@ def run_case(
     else:
         bounce_x, bounce_y = bounce
         target_error = float(np.linalg.norm(np.array(bounce) - np.array(case.target)))
+    max_height_above_net, rebound_height_above_net = low_arc_metrics(result)
 
     video_path = save_case_video(case, result, video_dir, ffmpeg_path) if video_dir is not None else None
     return {
@@ -266,6 +250,12 @@ def run_case(
         "bounce_y_mm": bounce_y,
         "target_error_mm": target_error,
         "inside_margin": int(target_error <= TARGET_MARGIN_MM),
+        "max_height_above_net_mm": max_height_above_net,
+        "rebound_height_above_net_mm": rebound_height_above_net,
+        "inside_low_arc": int(
+            max_height_above_net <= MAX_FLIGHT_HEIGHT_ABOVE_NET_MM
+            and rebound_height_above_net <= MAX_REBOUND_HEIGHT_ABOVE_NET_MM
+        ),
         "final_z_mm": float(result.x[2, -1]),
         "video": str(video_path) if video_path is not None else "",
     }
@@ -292,7 +282,8 @@ def main(argv: list[str] | None = None) -> None:
     print(
         "service,depth,lane,repeat,total_ms,avg_ms,samples,bounces,"
         "initial_x_mm,initial_y_mm,initial_z_mm,initial_vx_mm_s,initial_vy_mm_s,initial_vz_mm_s,"
-        "target_x_mm,target_y_mm,bounce_x_mm,bounce_y_mm,target_error_mm,inside_margin,final_z_mm,video"
+        "target_x_mm,target_y_mm,bounce_x_mm,bounce_y_mm,target_error_mm,inside_margin,"
+        "max_height_above_net_mm,rebound_height_above_net_mm,inside_low_arc,final_z_mm,video"
     )
     for case in build_cases():
         row = run_case(
@@ -309,7 +300,9 @@ def main(argv: list[str] | None = None) -> None:
             f"{row['initial_x_mm']:.1f},{row['initial_y_mm']:.1f},{row['initial_z_mm']:.1f},"
             f"{row['initial_vx_mm_s']:.1f},{row['initial_vy_mm_s']:.1f},{row['initial_vz_mm_s']:.1f},"
             f"{row['target_x_mm']:.1f},{row['target_y_mm']:.1f},{row['bounce_x_mm']:.1f},{row['bounce_y_mm']:.1f},"
-            f"{row['target_error_mm']:.1f},{row['inside_margin']},{row['final_z_mm']:.1f},{row['video']}"
+            f"{row['target_error_mm']:.1f},{row['inside_margin']},"
+            f"{row['max_height_above_net_mm']:.1f},{row['rebound_height_above_net_mm']:.1f},"
+            f"{row['inside_low_arc']},{row['final_z_mm']:.1f},{row['video']}"
         )
 
 

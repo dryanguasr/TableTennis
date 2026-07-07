@@ -10,7 +10,11 @@ import numpy as np
 from ..constants import DT, PITCH, TABLE_HEIGHT, TABLE_LENGTH, TABLE_WIDTH, YAW
 from ..exchange import ServiceTargets, StrokeTargets
 from ..physics import simulate_racket_impact
-from ..presets.returns import PILOT_SERVICE_PARAMS, PROFILE_TARGETS
+from ..presets.returns import (
+    PILOT_SERVICE_PARAMS,
+    PROFILE_TARGETS,
+    PROFILE_TARGET_X,
+)
 from ..search.returns import (
     build_return_preset,
 )
@@ -120,6 +124,7 @@ def save_exchange_video(
             direction="elbow",
             spin_rps=spin,
             stroke_side=stroke_side,
+            target_x=PROFILE_TARGET_X.get(profile),
         )
     required = {
         "service_params": service_params,
@@ -325,7 +330,12 @@ def main(argv: list[str] | None = None) -> None:
         report = validate_return(
             params,
             simulate_racket_impact(params, t_max=3.0),
-            StrokeTargets(depth=depth, spin_rps=spin, stroke_side=stroke_side),
+            StrokeTargets(
+                depth=depth,
+                spin_rps=spin,
+                stroke_side=stroke_side,
+                target_x=PROFILE_TARGET_X.get(profile),
+            ),
         )
         if not report.passed:
             raise SystemExit(f"{profile}/{stroke_side} is invalid: {report.violations}")

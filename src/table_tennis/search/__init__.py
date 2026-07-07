@@ -15,6 +15,7 @@ from .service import (
     search_racket_parameters,
 )
 from .exercises import ExerciseSearchJob, search_exercise
+from .retune_all import DirectRetuneJob, retune_direct_job, run_direct_retune
 
 __all__ = [
     "ReturnSearchConfig",
@@ -29,4 +30,7 @@ __all__ = [
     "search_return",
     "ExerciseSearchJob",
     "search_exercise",
+    "DirectRetuneJob",
+    "retune_direct_job",
+    "run_direct_retune",
 ]

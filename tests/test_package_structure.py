@@ -54,6 +54,7 @@ class PackageStructureTests(unittest.TestCase):
             ("generate", "return-videos", "--help"),
             ("generate", "benchmark-videos", "--help"),
             ("generate", "exercise-videos", "--help"),
+            ("generate", "exercise-viewer", "--help"),
             ("generate", "racket-viewer", "--help"),
         )
         with tempfile.TemporaryDirectory() as directory:

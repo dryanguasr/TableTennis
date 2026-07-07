@@ -21,11 +21,21 @@
    dependientes de una interfaz.
 3. Añada un caso al benchmark y una prueba de legalidad.
 4. Informe error de bote, error de efecto y margen sobre la red.
-5. Verifique derecha y revés cuando el gesto de raqueta sea parte del cambio.
+5. En servicios directos y con raqueta, exija también trayectoria baja: ápice
+   máximo de 50 mm sobre la malla entre el bote propio y el receptor, y rebote
+   receptor máximo de 25 mm sobre la malla.
+6. Verifique derecha y revés cuando el gesto de raqueta sea parte del cambio.
 
 No cambie simultáneamente ecuaciones físicas y presets calibrados. Primero
 modifique el modelo y añada pruebas físicas; después recalibre en un cambio
 separado y documente los errores anteriores y nuevos.
+
+Para cambios del motor, conserve una prueba independiente por ecuación y
+ejecute `table-tennis search retune-all` en orden `direct`, `services`,
+`returns`, `exercises`. Los checkpoints viven bajo `outputs/search/retune/`;
+solo promueva los cuatro lotes cuando todos sean válidos. El vuelo y la mesa
+usan el baseline ACE, mientras que el contacto con raqueta sigue siendo una
+capa separada y no debe adoptar coeficientes no publicados.
 
 ## Nuevos ejercicios
 
@@ -37,14 +47,25 @@ separado y documente los errores anteriores y nuevos.
 4. Ejecute `table-tennis search exercise --exercise <nombre>` y revise el JSON
    antes de promover cambios a los presets.
 5. Exija bote en el lado objetivo, cruce legal, cero contactos con la red,
-   holgura mínima de 5 mm y gesto compatible con el tipo de golpe.
+   holgura mínima de 5 mm, ápice no mayor que 50 mm sobre la red, primer
+   rebote no mayor que 25 mm sobre ella y gesto compatible con el tipo de
+   golpe.
 6. Pruebe el lote con `--dry-run`, un MP4 de humo y una segunda ejecución que
    produzca `SKIP`.
+
+No asigne fases y profundidades caso por caso para evadir la validación.
+`theoretical_contact()` y `stroke_target_point()` son la fuente de verdad:
+ataques de continuidad en punto 3, aperturas de topspin al 15 % del punto 4,
+pushes y bloqueos en punto 2, y cortes defensivos en punto 4. Los ataques,
+bloqueos, pushes largos y cortes defensivos deben llegar largos; un push corto
+debe declarar `depth="short"` y caer dentro de los primeros 450 mm desde la
+red. Toda recalibración debe conservar estas reglas.
 
 La animación de ejercicios debe conservar continuidad de posición y
 orientación en los nodos stand by, preparación, impacto y terminación. No
 introduzca cambios instantáneos de pose entre la ventana del golpe y el estado
-de espera.
+de espera. Reserve el 30 % central entre contactos consecutivos del mismo
+jugador para la meseta neutral, con el mango exactamente hacia atrás.
 
 ## Notebooks y CLI
 
@@ -75,6 +96,7 @@ table-tennis benchmark direct --repeat 1
 table-tennis benchmark racket --repeat 1 --no-video
 table-tennis generate benchmark-videos --suite all --dry-run
 table-tennis generate exercise-videos --dry-run
+table-tennis generate exercise-viewer
 git diff --check
 ```
 

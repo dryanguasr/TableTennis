@@ -122,6 +122,42 @@ def validate_service(
     clearance = net_clearance(result)
     if clearance < targets.min_net_clearance_mm:
         violations.append("service net clearance is too small")
+    if (
+        targets.max_height_above_net_mm is not None
+        or targets.max_rebound_height_above_net_mm is not None
+    ):
+        server_events = table_bounces(result, "server")
+        receiver_events = table_bounces(result, "receiver")
+        if server_events and receiver_events:
+            start = server_events[0].index
+            receiver_index = receiver_events[0].index
+            flight_height = float(
+                np.max(result.x[2, start : receiver_index + 1])
+                - NET_CLEARANCE_LEVEL
+            )
+            later = [
+                event.index
+                for event in table_bounces(result)
+                if event.index > receiver_index
+            ]
+            rebound_end = later[0] if later else result.x.shape[1] - 1
+            rebound_height = float(
+                np.max(result.x[2, receiver_index : rebound_end + 1])
+                - NET_CLEARANCE_LEVEL
+            )
+            if (
+                targets.max_height_above_net_mm is not None
+                and flight_height > targets.max_height_above_net_mm
+            ):
+                violations.append("service apex is above the configured limit")
+            if (
+                targets.max_rebound_height_above_net_mm is not None
+                and rebound_height
+                > targets.max_rebound_height_above_net_mm
+            ):
+                violations.append(
+                    "service rebound apex is above the configured limit"
+                )
     measured_spin_error = spin_error(params, targets.spin_rps)
     if measured_spin_error > targets.spin_tolerance_rps:
         violations.append("service spin is outside tolerance")
